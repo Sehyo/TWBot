@@ -1,0 +1,2 @@
+# TWBot
+Tribalwars Bot
