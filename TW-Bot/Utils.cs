@@ -9,7 +9,7 @@ namespace TW_Bot
     public static class Utils
     {
         private static readonly HttpClient client = new HttpClient();
-
+        public static DateTime? lastServerCommunicationTime = null;
         public const uint WM_KEYDOWN = 0x0100;
         public const uint WM_KEYUP = 0x0101;
 
@@ -22,7 +22,9 @@ namespace TW_Bot
             {
                 System.Console.WriteLine("BOT PROTECTION DETECTED");
                 SendPush();
+                Client.player.Play();
                 System.Console.ReadLine();
+                Client.player.Stop();
             }
         }
 
@@ -44,10 +46,32 @@ namespace TW_Bot
 
         public static void GoTo(IE browser, string url)
         {
+            Client.WaitForTurn();
             browser.GoTo(url);
             while (((SHDocVw.InternetExplorerClass)(browser.InternetExplorer)).Busy || browser.Html == null)
             {
                 System.Threading.Thread.Sleep(100);
+            }
+            bool upload = false;
+            if (lastServerCommunicationTime == null)
+            {
+                lastServerCommunicationTime = DateTime.Now;
+                upload = true;
+            }
+            else
+            {
+                TimeSpan timeSpan = DateTime.Now.Subtract((DateTime)lastServerCommunicationTime);
+                if (timeSpan.Minutes <= 5) upload = false;
+                else
+                {
+                    upload = true;
+                    lastServerCommunicationTime = DateTime.Now;
+                }
+            }
+            if (upload)
+            {
+                browser.CaptureWebPageToFile("latest.jpg");
+                Client.UploadAll();
             }
         }
 

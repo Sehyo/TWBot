@@ -4,6 +4,7 @@ using System.Text.RegularExpressions;
 using System;
 using System.Windows.Forms;
 using System.Numerics;
+using System.Runtime.InteropServices;
 
 namespace TW_Bot
 {
@@ -14,17 +15,79 @@ namespace TW_Bot
         public string world;
         IE browser;
         public Troops troops; // Troops of this village.
+        public Troops totalTroops;
         public Buildings buildings;
         public List<FarmVillage> farmVillages;
         public List<FarmVillage> spikedVillages;
         public DateTime? SoonestScavengeCompletionTime = null;
+        public DateTime? LastTimeWeReadReports = null;
 
+        [DllImport("User32.dll")]
+        public static extern Int32 SetForegroundWindow(IntPtr hWnd);
+        
         private Village()
         {
-            this.farmVillages = new List<FarmVillage>();
-            this.spikedVillages = new List<FarmVillage>();
+            farmVillages = new List<FarmVillage>();
+            spikedVillages = new List<FarmVillage>();
             this.troops = new Troops();
+            this.totalTroops = new Troops();
             this.villageId = -1;
+        }
+
+        public Village TagAttacks()
+        {
+            // https://en105.tribalwars.net/game.php?village=20012&screen=overview_villages&mode=incomings&subtype=attacks
+            System.Console.WriteLine("---Tagging Incomings---");
+            Utils.GoTo(browser, "https://" + world + ".tribalwars.net/game.php?village=" + villageId + "&screen=overview_villages&mode=incomings&subtype=attacks");
+            WatiN.Core.CheckBox selectAll = browser.CheckBox(Find.ById("select_all"));
+            if(!selectAll.Checked)
+            {
+                System.Console.WriteLine("Checking Check All Incomings CheckBox.");
+                selectAll.Click();
+            }
+            System.Console.WriteLine("Clicking Mark Button.");
+            WatiN.Core.Button markButton = browser.Button(Find.ByName("label"));
+            markButton.Click();
+            System.Console.WriteLine("Attacks marked.");
+            return this;
+        }
+
+        public void removeDuplicateFarmVillages()
+        {
+            int dupesRemoved = 0;
+            System.Console.WriteLine("Starting removal of duped villages.");
+            for(int i = farmVillages.Count - 1; i >= 0; i--)
+            {
+                // Check if i is a duplicate in farmVillage list.
+                for(int y = 0; y < farmVillages.Count; y++)
+                {
+                    if (i == y) break;
+                    if(farmVillages[i].x == farmVillages[y].x && farmVillages[i].y == farmVillages[y].y)
+                    {
+                        ++dupesRemoved;
+                        // Remove this duplicate village backwards because we assume fresher ones have more updated information.
+                        // Due to loops usually looping from the start.
+                        farmVillages.RemoveAt(i);
+                        break; // OK to break here. If there are more than one duplicate it will be caught later anyway.
+                    }
+                }
+            }
+
+            // Same thing but with spiked villages list.
+            for (int i = spikedVillages.Count - 1; i >= 0; i--)
+            {
+                for (int y = 0; y < farmVillages.Count; y++)
+                {
+                    if (spikedVillages[i].x == farmVillages[y].x && spikedVillages[i].y == farmVillages[y].y)
+                    {
+                        ++dupesRemoved;
+                        spikedVillages.RemoveAt(i);
+                        break;
+                    }
+                }
+            }
+
+            System.Console.WriteLine("Removed {0} dupes.", dupesRemoved);
         }
 
         public void addBarbFarmVillagesFromFile(string path)
@@ -74,12 +137,28 @@ namespace TW_Bot
             return this;
         }
 
+        public double DistanceToFarm(FarmVillage farm)
+        {
+            Vector2 ourPos = new Vector2(x, y);
+            return Vector2.Distance(ourPos, new Vector2(farm.x, farm.y));
+        }
+
         public Village(List<FarmVillage> farmVillages, int villageId)
         {
             this.farmVillages = farmVillages;
             this.spikedVillages = new List<FarmVillage>();
             this.villageId = villageId;
             this.troops = new Troops();
+        }
+
+        public Village(int villageId, int x, int y)
+        {
+            this.farmVillages = new List<FarmVillage>();
+            this.spikedVillages = new List<FarmVillage>();
+            this.villageId = villageId;
+            this.troops = new Troops();
+            this.x = x;
+            this.y = y;
         }
 
         public void SetBrowser(ref IE browser)
@@ -95,7 +174,7 @@ namespace TW_Bot
         public void RemoveSpikedFarms()
         {
             System.Console.WriteLine("Starting removal of spiked villages.");
-            browser.GoTo("https://" + world + ".tribalwars.net/game.php?village=" + villageId + "&screen=report");
+            Utils.GoTo(browser, "https://" + world + ".tribalwars.net/game.php?village=" + villageId + "&screen=report");
             Utils.CheckBotProtection(browser.Html);
             browser.RadioButton(Find.ById("filter_dots_red")).Click();
             Utils.CheckBotProtection(browser.Html);
@@ -129,8 +208,17 @@ namespace TW_Bot
             foreach (Span report in spikeReports)
             {
                 var match = Regex.Match(report.Text, @"\d+|\d+");
-                int x = int.Parse(match.ToString());
-                int y = int.Parse(match.NextMatch().ToString());
+                int x, y;
+                try
+                {
+                    x = int.Parse(match.ToString());
+                    y = int.Parse(match.NextMatch().ToString());
+                }
+                catch
+                {
+                    System.Console.WriteLine("Report \"{0}\" is not relevant.", report.Text);
+                    continue;
+                }
                 for (int i = farmVillages.Count - 1; i >= 0; i--)
                 {
                     if (farmVillages[i].x == x && farmVillages[i].y == y)
@@ -148,26 +236,54 @@ namespace TW_Bot
 
             foreach (Span report in partialLosses)
             {
-                var match = Regex.Match(report.Text, @"\d+|\d+");
-                int x = int.Parse(match.ToString());
-                int y = int.Parse(match.NextMatch().ToString());
-                for (int i = farmVillages.Count - 1; i >= 0; i--)
+                try // Yellow dot reports from assisting other villages will cause an exception.
                 {
-                    if (farmVillages[i].x == x && farmVillages[i].y == y)
+                    var match = Regex.Match(report.Text, @"\d+|\d+");
+                    int x = int.Parse(match.ToString());
+                    int y = int.Parse(match.NextMatch().ToString());
+                    for (int i = farmVillages.Count - 1; i >= 0; i--)
                     {
-                        System.Console.WriteLine("Removing village: ({0}|{1})", x, y);
-                        spikedVillages.Add(farmVillages[i]);
-                        farmVillages.RemoveAt(i);
+                        if (farmVillages[i].x == x && farmVillages[i].y == y)
+                        {
+                            System.Console.WriteLine("Removing village: ({0}|{1})", x, y);
+                            spikedVillages.Add(farmVillages[i]);
+                            farmVillages.RemoveAt(i);
+                        }
                     }
+                }
+                catch
+                {
+                    continue;
                 }
             }
 
             System.Console.WriteLine("Spiked villages removed.");
         }
+
+        /*public Village TagIncomings()
+        {
+            Utils.GoTo(browser, "https://" + world + ".tribalwars.net/game.php?village=" + villageId + "&screen=overview_villages&mode=incomings&subtype=attacks");
+            // 1. Get all incomings.
+
+            // 2. Check if they are already tagged or not.
+
+            // 3. Condition 1: Only keep incomings if they didn't exist last time we checked incs.
+            //    Condition 2: The time difference from now and last time we checked incs can't be greater than X minutes. (To make sure we tag correctly).
+
+            // 4. Calculate most likely unit type.
+
+            // 5. Tag.
+
+            // 6. ???
+
+            // 7. Profit.
+            return this;
+        }*/
         
         public Village Scavenge()
         {
             System.Console.WriteLine("Scavenge Function Started");
+            //SetForegroundWindow(browser.hWnd);
             GetTroops();
             if (troops.spears < 10) return this;
             Utils.GoTo(browser, "https://" + world + ".tribalwars.net/game.php?village=" + villageId + "&screen=place&mode=scavenge");
@@ -220,15 +336,39 @@ namespace TW_Bot
                 if (spearCount < 10) return this;
                 System.Console.WriteLine("Scavenge - current option index: {0}", i);
                 TextField spearText = browser.TextField(Find.ByName("spear"));
+                //spearText.Focus();
+                //spearText.Click();
+                //spearText.Id = "CHANGEME";
+                //string jsCode = "var e = jQuery.Event('keydown'); e.which = 50; $('#CHANGEME').trigger(e);";
+
+                //string jsCode = "var evt = new KeyboardEvent('keydown', { 'keyCode':50, 'which':50}); document.getElementById('CHANGEME').dispatchEvent(evt);";
+                //string jsCode = "$(\"#CHANGEME\").val('200');";
+                //browser.Eval(jsCode);
+                //spearText.SetAttributeValue("readonly", "true");
+
+                //System.Console.ReadLine();
+                //spearText.TypeText("2");
+                //string jsElementRef = spearText.GetJavascriptElementReference();
+                //browser.
+                //browser.
+                //spearText.SetAttributeValue("value", spearCount.ToString());
+                //spearText.
+                //System.Console.WriteLine("Entered 200.");
+
+
                 //spearText.Value = "200"; // Doesn't work. Text disappears.
                 //spearText.TypeText("200"); // Doesn't work. Text disappears.
                 // Work Around:
-
+                SetForegroundWindow(browser.hWnd);
                 browser.Body.Focus();
+                SetForegroundWindow(browser.hWnd);
                 spearText.Focus();
                 SendKeys.SendWait(spearCount.ToString()); // spearText.Value and .TypeText here doesn't work. Input gets removed. Wtf?
                 System.Console.WriteLine("Entered Spear Count.");
+                System.Threading.Thread.Sleep(50);
                 options[i].Click();
+                System.Threading.Thread.Sleep(200);
+                //System.Console.ReadLine();
                 // Wait for the countdown to appear.
                 Span cd = optionDivs[i].Span(Find.ByClass("return-countdown"));
                 System.Console.WriteLine("Waiting for count down to exist.");
@@ -275,7 +415,7 @@ namespace TW_Bot
 
         public void GetBuildings()
         {
-            browser.GoTo("https://" + world + ".tribalwars.net/game.php?village=" + villageId + "&screen=main");
+            Utils.GoTo(browser, "https://" + world + ".tribalwars.net/game.php?village=" + villageId + "&screen=main");
             Utils.CheckBotProtection(browser.Html);
             Regex digitsRegex = new Regex(@"[^\d]");
             buildings.headquarters = int.Parse(digitsRegex.Replace(((Span)((TableCell)((browser.TableRow(Find.ById("main_buildrow_main"))).Children()[0])).Children()[3]).InnerHtml, ""));
@@ -297,7 +437,7 @@ namespace TW_Bot
 
         public void GetTroops()
         {// https://en105.tribalwars.net/game.php?village=20012&screen=place&mode=command
-            if (!browser.Url.Contains("command"))
+            if (!browser.Url.Contains("command") || !browser.Url.Contains(villageId.ToString()))
                 Utils.GoTo(browser, "https://" + world + ".tribalwars.net/game.php?village=" + villageId + "&screen=place&mode=command");
             Utils.CheckBotProtection(browser.Html);
             // Now we are at the place where we can send attacks and shit.
@@ -316,16 +456,74 @@ namespace TW_Bot
             System.Console.WriteLine("Updated troop counts for village {0}", villageId);
         }
 
+        public void GetTotalTroops()
+        {
+            // We just get total LC count for now cos lazy.
+            // https://en105.tribalwars.net/game.php?village=20012&screen=stable
+            // https://en105.tribalwars.net/game.php?village=20012&screen=barracks
+            // https://en105.tribalwars.net/game.php?village=20012&screen=garage
+            Utils.GoTo(browser, "https://" + world + ".tribalwars.net/game.php?village=" + villageId + "&screen=stable");
+            LinkCollection links = browser.Links;
+            Link lcLink = null;
+
+            for (int i = 0; i < links.Count; i++)
+            {
+                if (links[i].ClassName == null) continue;
+                if(links[i].ClassName.Equals("unit_link"))
+                {
+                    if(links[i].GetAttributeValue("data-unit").Equals("light"))
+                    {
+                        lcLink = links[i];
+                        break;
+                    }
+                }
+            }
+
+            if(lcLink == null)
+            {
+                System.Console.WriteLine("Could not find lcLink..");
+                System.Console.ReadLine();
+            }
+            try
+            {
+                TableCell parentCell = (TableCell)lcLink.Parent;
+                TableRow parentRow = (TableRow)parentCell.Parent;
+                TableCell lcCountCell = (TableCell)(parentRow.Children()[2]);
+
+                string[] counts = lcCountCell.InnerHtml.Split('/');
+                troops.lc = int.Parse(counts[0]);
+                totalTroops.lc = int.Parse(counts[1]);
+            }
+            catch
+            {
+                troops.lc = 0;
+                totalTroops.lc = 0;
+            }
+
+            System.Console.WriteLine("We currently have {0} / {1} lc.", troops.lc, totalTroops.lc);
+        }
+
         public Village CheckScoutReports()
         {
+            if (Settings.REPORT_READ_INTERVAL_MINUTES <= 0) return this;
+            bool readReports = false;
+            //if (LastTimeWeReadReports == null) readReports = true;
+            //else if (((DateTime)LastTimeWeReadReports).AddMinutes(Settings.REPORT_READ_INTERVAL_MINUTES) < DateTime.Now) readReports = true;
+            if (Settings.LastTimeWeReadReports == null) readReports = true;
+            else if (((DateTime)Settings.LastTimeWeReadReports).AddMinutes(Settings.REPORT_READ_INTERVAL_MINUTES) < DateTime.Now) readReports = true;
+            if (!readReports)
+            {
+                //System.Console.WriteLine("Skipping reading of reports for now.");
+                return this;
+            }
             System.Console.WriteLine("Checking Scout Reports.");
             List<FarmVillage> villagesAwaitingScouts = new List<FarmVillage>();
             foreach(FarmVillage village in farmVillages)
             {
-                if(village.scoutOnTheWay)
-                {
+                //if(village.scoutOnTheWay)
+                //{
                     villagesAwaitingScouts.Add(village);
-                }
+                //}
             }
             foreach (FarmVillage village in spikedVillages)
             {
@@ -340,7 +538,7 @@ namespace TW_Bot
             System.Console.WriteLine("-----Ends Here-----");
 
             // Go to reports tab.
-            browser.GoTo("https://" + world + ".tribalwars.net/game.php?village=" + villageId + "&screen=report");
+            Utils.GoTo(browser, "https://" + world + ".tribalwars.net/game.php?village=" + villageId + "&screen=report&mode=all&group_id=22988");
             Utils.CheckBotProtection(browser.Html);
             browser.RadioButton(Find.ById("filter_dots_none")).Click();
             Utils.CheckBotProtection(browser.Html);
@@ -355,10 +553,209 @@ namespace TW_Bot
                 Utils.CheckBotProtection(browser.Html);
             }
             SpanCollection scoutReports = browser.Spans.Filter(Find.ByClass("quickedit-label"));
+            // Save link to report and the text.
+            List<Tuple<string, string>> scoutReportTuples = new List<Tuple<string, string>>();
+            foreach(Span rep in scoutReports)
+            {
+                string link;
+                if(rep.Parent.OuterHtml.Contains("flipthis-wrapper"))
+                {
+                    link = ((Link)(rep.Parent.Parent)).Url;
+                }
+                else
+                {
+                    link = ((Link)(rep.Parent)).Url;
+                }
+                string text = rep.Text;
+                scoutReportTuples.Add(new Tuple<string, string>(link, text));
+            }
             System.Console.WriteLine("We have {0} reports.", scoutReports.Count);
-
+            // USE REPORT ID!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! NOT TIME!!!!!!!!!!!!!!!!!
             int abc = 0;
-            int reportCount = scoutReports.Count;
+            int reportCount = scoutReportTuples.Count;
+            for (int reportNumber = 0; reportNumber < scoutReportTuples.Count; reportNumber++)
+            {
+                ++abc;
+                var match = Regex.Match(scoutReportTuples[reportNumber].Item2, @"(\d+)\|(\d+)");
+                int x = int.Parse(match.Groups[1].Value);
+                int y = int.Parse(match.Groups[2].Value);
+                //foreach (Group group in match.Groups) System.Console.WriteLine(group.Value);
+                //int x = int.Parse(match.ToString());
+                //int y = int.Parse(match.NextMatch().ToString());
+                System.Console.WriteLine("Current report is for village {0}|{1}", x, y);
+                for (int i = villagesAwaitingScouts.Count - 1; i >= 0; i--) // Quadratic.. Must optimise later..
+                {
+                    if (villagesAwaitingScouts[i].x == x && villagesAwaitingScouts[i].y == y)
+                    {
+                        System.Console.WriteLine("Current report is for village: ({0}|{1}).", x, y);
+                        int currentReportId;
+                        // https://en105.tribalwars.net/game.php?village=19360&screen=report&mode=all&group_id=0&view=23866502
+                        var idMatch = Regex.Match(scoutReportTuples[reportNumber].Item1, @"view=\d+");
+                        currentReportId = int.Parse(Regex.Replace(idMatch.ToString(), "[^0-9]", ""));
+                        if (currentReportId > villagesAwaitingScouts[i].lastReadReportId)
+                        {
+                            System.Console.WriteLine("Report is newer than last read for this village!");
+                        }
+                        else
+                        {
+                            System.Console.WriteLine("There is a newer report for this village. Skipping");
+                            continue;
+                        }
+                        villagesAwaitingScouts[i].lastReadReportId = currentReportId;
+                        // Only use reports from blue, green, and red/blue
+                        /*TableCell reportCell = (TableCell)scoutReports[reportNumber].Parent.Parent.Parent.Parent;
+                        Image successType = (Image)(reportCell.Children()[1]);
+                        if (!(successType.Src.Contains("green") || successType.Src.Contains("blue") || successType.Src.Contains("red_blue")))
+                        {
+                            System.Console.WriteLine("Success Level of this report is not green, blue or red_blue. Skipping this report.");
+                            continue;
+                        }*/
+                        // Open report page
+                        System.Console.WriteLine("Opening Report.");
+                        Utils.GoTo(browser, scoutReportTuples[reportNumber].Item1);
+                        while (browser.Html == null) { }
+                        Utils.CheckBotProtection(browser.Html);
+                        System.Console.WriteLine("Report opened.");
+                        int wallLevel = -1;
+
+                        
+
+                        // Check resource levels.
+                        // IMAGE LINKS ARE NOT ALWAYS THE SAME APPEARENTLY.
+
+                        ImageCollection allImages = browser.Images;
+                        Image woodImage = null;
+                        Image clayImage = null;
+                        Image ironImage = null;
+                        Image wallImage = null;
+                        foreach (Image image in allImages)
+                        {
+                            if (image.Src.Contains("wood.png")) woodImage = image;
+                            else if (image.Src.Contains("stone.png")) clayImage = image;
+                            else if (image.Src.Contains("iron.png")) ironImage = image;
+                            else if (image.Src.Contains("wall.png")) wallImage = image;
+                        }
+
+                        if (wallImage != null)
+                        {
+                            wallLevel = int.Parse(wallImage.Parent.NextSibling.InnerHtml);
+                        }
+                        else wallLevel = 0;
+                        // Save wall level.
+                        System.Console.WriteLine("Changed wall level! Previous: {0}, new: {1}", villagesAwaitingScouts[i].wall, wallLevel);
+                        villagesAwaitingScouts[i].wall = wallLevel;
+
+                        // https://dsen.innogamescdn.com/asset/76fbc28978/graphic/buildings/wood.png
+                        // = browser.Image(Find.BySrc("https://dsen.innogamescdn.com/asset/76fbc28978/graphic/buildings/wood.png"));
+                        int woodLevel = -1;
+                        if (woodImage != null)
+                        {
+                            woodLevel = int.Parse(woodImage.Parent.NextSibling.InnerHtml);
+                        }
+                        else woodLevel = 0;
+                        // https://dsen.innogamescdn.com/asset/76fbc28978/graphic/buildings/stone.png
+                         //= browser.Image(Find.BySrc("https://dsen.innogamescdn.com/asset/76fbc28978/graphic/buildings/stone.png"));
+                        int clayLevel = -1;
+                        if (clayImage != null)
+                        {
+                            clayLevel = int.Parse(clayImage.Parent.NextSibling.InnerHtml);
+                        }
+                        else clayLevel = 0;
+                        // https://dsen.innogamescdn.com/asset/76fbc28978/graphic/buildings/iron.png
+                        
+                        //  = browser.Image(Find.BySrc("https://dsen.innogamescdn.com/asset/76fbc28978/graphic/buildings/iron.png"));
+                         
+                        int ironLevel = -1;
+                        if (ironImage != null)
+                        {
+                            ironLevel = int.Parse(ironImage.Parent.NextSibling.InnerHtml);
+                        }
+                        else ironLevel = 0;
+
+                        System.Console.WriteLine("Scouted Resource Levels: {0}, {1}, {2}", woodLevel, clayLevel, ironLevel);
+                        villagesAwaitingScouts[i].wood = woodLevel;
+                        villagesAwaitingScouts[i].clay = clayLevel;
+                        villagesAwaitingScouts[i].iron = ironLevel;
+
+                        try
+                        {
+                            // Check if village contains troops.
+                            // If no troop, unit type is faded.
+                            Table defInfo = browser.Table(Find.ById("attack_info_def"));
+                            TableBody defInfoBody = (TableBody)(defInfo.Children()[0]); // 0 is out of range
+                            TableCell unitInfo = (TableCell)(((TableRow)(defInfoBody.Children()[2])).Children()[0]);
+                            Table unitTable;
+                            try
+                            {
+                                unitTable = (Table)(unitInfo.Children()[0]);
+                            }
+                            catch
+                            {
+                                System.Console.WriteLine("Current report is 100 % fail.");
+                                System.Console.WriteLine("Keeping village in spiked villages list.");
+                                System.Console.WriteLine("Added village to spiked village list.");
+                                spikedVillages.Remove(villagesAwaitingScouts[i]);
+                                farmVillages.Remove(villagesAwaitingScouts[i]);
+                                spikedVillages.Add(villagesAwaitingScouts[i]);
+                                villagesAwaitingScouts.Remove(villagesAwaitingScouts[i]);
+                                System.Console.WriteLine("Continuing..");
+                                break; // Break out of inner for loop as it only concerns this village.
+                            }
+                            TableBody innerUnitTableBody = (TableBody)unitTable.Children()[0];
+                            TableRow centerUnitStuff = (TableRow)innerUnitTableBody.Children()[0];
+
+                            // First element is not a unit.
+                            bool unitsExists = false;
+                            for (int z = 1; z < centerUnitStuff.Children().Count; z++)
+                            {
+                                TableCell currentUnitCell = (TableCell)centerUnitStuff.Children()[z];
+                                Link innerLink = (Link)currentUnitCell.Children()[0];
+                                Image innerImage = (Image)innerLink.Children()[0];
+                                //System.Console.WriteLine("Image outer html is: {0}.\nImage inner html is: {1}.", innerImage.OuterHtml, innerImage.InnerHtml);
+                                string fadeStatus = innerImage.ClassName; // Non-Faded units have a null Class Name.
+                                if (fadeStatus != null)
+                                {
+                                    //System.Console.WriteLine("Current unit type is faded!");
+                                    // Do nothing.
+                                }
+                                else
+                                {
+                                    System.Console.WriteLine("Current unit type is _NOT_ faded!");
+                                    unitsExists = true; // There are units in this village.
+                                    break;
+                                }
+                            }
+
+                            //System.Console.WriteLine("Enemy units in this report? : {0}", unitsExists);
+
+                            // If contains troops, make sure it keeps existing in only spikedVillages.
+                            villagesAwaitingScouts[i].scoutOnTheWay = false;
+
+                            spikedVillages.Remove(villagesAwaitingScouts[i]);
+                            farmVillages.Remove(villagesAwaitingScouts[i]);
+                            Utils.GoTo(browser, "https://" + world + ".tribalwars.net/game.php?village=" + villageId + "&screen=report"); // Go back to report overview.
+                            Utils.CheckBotProtection(browser.Html);
+                            if (unitsExists)
+                            {
+                                System.Console.WriteLine("Added village to spiked village list.");
+                                spikedVillages.Add(villagesAwaitingScouts[i]);
+                            }
+                            else
+                            {
+                                //System.Console.WriteLine("Adding village to farm villages list as there are no troops in this report.");
+                                farmVillages.Add(villagesAwaitingScouts[i]);
+                            }
+                            //System.Console.WriteLine("Removing village from Awaiting Scout List.");
+                            villagesAwaitingScouts.Remove(villagesAwaitingScouts[i]);
+                        }
+                        catch
+                        {
+                            System.Console.WriteLine("Some error checking units of this report. Continuing.");
+                        }
+                    }
+                }
+            }
+            /*
             for(int reportNumber = 0; reportNumber < scoutReports.Count; reportNumber++)
             {
                 ++abc;
@@ -383,6 +780,15 @@ namespace TW_Bot
                         {
                             System.Console.WriteLine("The report is newer than the scout attacK!");
                         }
+                        if(GetDateOfReport(scoutReports[reportNumber]) > villagesAwaitingScouts[i].lastScoutReportTime)
+                        {
+                            System.Console.WriteLine("This is the newest report!");
+                        }
+                        else
+                        {
+                            System.Console.WriteLine("There is a newer report for this village. Skipping");
+                            continue;
+                        }
                         // Only use reports from blue, green, and red/blue
                         TableCell reportCell = (TableCell)scoutReports[reportNumber].Parent.Parent.Parent.Parent;
                         Image successType = (Image)(reportCell.Children()[1]);
@@ -394,6 +800,7 @@ namespace TW_Bot
                         // Open report page
                         System.Console.WriteLine("Opening Report.");
                         scoutReports[reportNumber].Click();
+                        while(browser.Html == null) { }
                         Utils.CheckBotProtection(browser.Html);
                         System.Console.WriteLine("Report opened.");
                         int wallLevel = -1;
@@ -407,6 +814,37 @@ namespace TW_Bot
                         // Save wall level.
                         System.Console.WriteLine("Changed wall level! Previous: {0}, new: {1}", villagesAwaitingScouts[i].wall, wallLevel);
                         villagesAwaitingScouts[i].wall = wallLevel;
+
+                        // Check resource levels.
+                        // https://dsen.innogamescdn.com/asset/76fbc28978/graphic/buildings/wood.png
+                        Image woodImage = browser.Image(Find.BySrc("https://dsen.innogamescdn.com/asset/76fbc28978/graphic/buildings/wood.png"));
+                        int woodLevel = -1;
+                        if (woodImage.Exists)
+                        {
+                            woodLevel = int.Parse(woodImage.Parent.NextSibling.InnerHtml);
+                        }
+                        else woodLevel = 0;
+                        // https://dsen.innogamescdn.com/asset/76fbc28978/graphic/buildings/stone.png
+                        Image clayImage = browser.Image(Find.BySrc("https://dsen.innogamescdn.com/asset/76fbc28978/graphic/buildings/stone.png"));
+                        int clayLevel = -1;
+                        if (clayImage.Exists)
+                        {
+                            clayLevel = int.Parse(clayImage.Parent.NextSibling.InnerHtml);
+                        }
+                        else clayLevel = 0;
+                        // https://dsen.innogamescdn.com/asset/76fbc28978/graphic/buildings/iron.png
+                        Image ironImage = browser.Image(Find.BySrc("https://dsen.innogamescdn.com/asset/76fbc28978/graphic/buildings/iron.png"));
+                        int ironLevel = -1;
+                        if (ironImage.Exists)
+                        {
+                            ironLevel = int.Parse(ironImage.Parent.NextSibling.InnerHtml);
+                        }
+                        else ironLevel = 0;
+
+                        System.Console.WriteLine("Scouted Resource Levels: {0}, {1}, {2}", woodLevel, clayLevel, ironLevel);
+                        villagesAwaitingScouts[i].wood = woodLevel;
+                        villagesAwaitingScouts[i].clay = clayLevel;
+                        villagesAwaitingScouts[i].iron = ironLevel;
 
                         // Check if village contains troops.
                         // If no troop, unit type is faded.
@@ -470,8 +908,11 @@ namespace TW_Bot
                     }
                 }
             }
+            */
             System.Console.WriteLine("We checked {0} reports.", abc);
             System.Console.WriteLine("Finished Checking Scout Reports.");
+            Settings.LastTimeWeReadReports = DateTime.Now;
+            //LastTimeWeReadReports = DateTime.Now;
             return this;
         }
 
@@ -527,6 +968,15 @@ namespace TW_Bot
                 --troops.scouts;
                 browser.Button(Find.ById("target_attack")).Click();
                 Utils.CheckBotProtection(browser.Html);
+                Table visTable = browser.Table(Find.ByClass("vis"));
+                TableBody visTableBody = (TableBody)(visTable.Children()[0]);
+                village.isBarb = visTableBody.Children().Count == 6; // Players have 7 children here.
+                if(!village.isBarb)
+                {
+                    // Village used to be a barb, but is now a player village.
+                    GetTroops();
+                    continue; // Skip this village.
+                }
                 browser.Button(Find.ById("troop_confirm_go")).Click();
                 Utils.CheckBotProtection(browser.Html);
                 village.scoutOnTheWay = true;
@@ -535,6 +985,108 @@ namespace TW_Bot
                 System.Console.WriteLine("Server Time is: {0}", GetServerTime());
             }
             System.Console.WriteLine("Finished scouting of spiked villages.");
+            return this;
+        }
+
+        public Village FAFarm()
+        {
+            // https://en105.tribalwars.net/game.php?village=20012&screen=am_farm
+            Utils.GoTo(browser, "https://" + world + ".tribalwars.net/game.php?village=" + villageId + "&screen=am_farm");
+            Utils.CheckBotProtection(browser.Html);
+            Random random = new Random(DateTime.Now.Millisecond);
+            // Make sure attacked checkbox is checked.
+            System.Console.WriteLine("STARTING FA FARMING");
+            for (int i = 0; !browser.Url.Contains("&&"); i++) // url will contain && only when we have passed the last page.
+            {
+                Utils.GoTo(browser, "https://" + world + ".tribalwars.net/game.php?village=" + villageId + "&screen=am_farm&order=distance&dir=asc&Farm_page=" + i);
+                Utils.CheckBotProtection(browser.Html);
+                WatiN.Core.CheckBox attackedCheckBox = browser.CheckBox(Find.ById("attacked_checkbox"));
+                if (!attackedCheckBox.Checked) attackedCheckBox.Click();
+                Table plunderList = browser.Table(Find.ById("plunder_list"));
+                TableBody plunderBody = (TableBody)(plunderList.Children()[0]);
+                TableRowCollection farms = plunderBody.OwnTableRows; // First 2 entries are not farms though.
+
+                for (int j = 2; j < farms.Count; j++)
+                {
+                    TableCell lcCountCell = browser.TableCell(Find.ById("light"));
+                    int lcCount = int.Parse(lcCountCell.InnerHtml);
+                    if (lcCount < 5) return this;
+                    if (farms[j].InnerHtml.Contains("disabled")) continue;
+                    int targetX, targetY;
+                    TableCell coordsCell = (TableCell)farms[j].Children()[3];
+                    Link coordsLink = (Link)coordsCell.Children()[0];
+                    //Div coordsDiv = (Div)coordsCell.Children()[0];
+                    //Link coordsLink = (Link)coordsDiv.Children()[0];
+                    string coordsText = coordsLink.InnerHtml.Split(' ')[1].Substring(1);
+                    coordsText = coordsText.Remove(coordsText.Length - 1);
+                    string[] coords = coordsText.Split('|');
+                    targetX = int.Parse(coords[0]);
+                    targetY = int.Parse(coords[1]);
+                    double distance = Math.Sqrt(Math.Pow(targetX - x, 2) + Math.Pow(targetY - y, 2));
+                    double travelTime = distance * 10;
+                    DateTime eta = DateTime.Now.AddMinutes(travelTime);
+                    // Find Farm Village if exists.
+                    FarmVillage targetVillage = null;
+                    foreach (FarmVillage farmVillage in farmVillages)
+                    {
+                        if (!(farmVillage.x == targetX && farmVillage.y == targetY)) continue;
+                        targetVillage = farmVillage;
+                        break;
+                    }
+                    if (targetVillage == null)
+                    {
+                        // Target Village doesn't exist in our list.
+                        // Let's add it.
+                        // public FarmVillage(int x, int y, bool isBarb = false, int wall = -1, int clay = -1, int wood = -1, int iron = -1, double minimumAttackIntervalInMinutes = 120)
+                        targetVillage = new FarmVillage(targetX, targetY, true);
+                        farmVillages.Add(targetVillage);
+                    }
+
+                    DateTime filterTime = targetVillage.lastAttackETA.AddMinutes(targetVillage.minimumAttackIntervalInMinutes);
+                    if (eta < filterTime) continue;
+
+                    // 8 = A, 9 = B, 10 = C
+                    TableCell cellA = (TableCell)farms[j].Children()[8];
+                    TableCell cellB = (TableCell)farms[j].Children()[9];
+                    TableCell cellC = (TableCell)farms[j].Children()[10];
+
+                    Link buttonA = (Link)cellA.Children()[0];
+                    Link buttonB = (Link)cellB.Children()[0];
+                    //Link buttonC = (Link)cellC.Children()[0];
+
+                    //Link buttonA = (Link)((Div)cellA.Children()[0]).Children()[0];
+                    //Link buttonB = (Link)((Div)cellB.Children()[0]).Children()[0];
+                    //Link buttonC = (Link)((Div)cellC.Children()[0]).Children()[0];
+
+                    TableCell lcs = browser.TableCell(Find.ById("light"));
+                    TableCell scouts = browser.TableCell(Find.ById("spy"));
+
+                    int lcLeft = int.Parse(lcs.InnerHtml);
+                    int scoutsLeft = int.Parse(scouts.InnerHtml);
+
+                    System.Console.WriteLine("LCs left: {0}", lcLeft);
+                    System.Console.WriteLine("Scouts left: {0}", scoutsLeft);
+
+                    if (!buttonA.OuterHtml.Contains("disabled") && lcLeft >= Settings.LC_PER_BARB_ATTACK && scoutsLeft >= 1)
+                    {
+                        buttonA.Click();
+                        targetVillage.lastAttackETA = eta;
+                        targetVillage.lastSentAttackTime = DateTime.Now;
+                        System.Threading.Thread.Sleep(random.Next(200, 300));
+                        Utils.CheckBotProtection(browser.Html);
+                    }
+                    else if (!buttonB.OuterHtml.Contains("disabled") && lcLeft >= Settings.LC_PER_BARB_ATTACK)
+                    {
+                        buttonB.Click();
+                        targetVillage.lastAttackETA = eta;
+                        targetVillage.lastSentAttackTime = DateTime.Now;
+                        System.Threading.Thread.Sleep(random.Next(200, 300));
+                        Utils.CheckBotProtection(browser.Html);
+                    }
+                    else return this;
+                }
+            }
+            System.Console.WriteLine("ENDING FA FARMING");
             return this;
         }
 
@@ -550,6 +1102,11 @@ namespace TW_Bot
             System.Console.WriteLine("We have {0} farm villages.", farmVillages.Count);
             foreach (FarmVillage village in farmVillages)
             {
+                if (DistanceToFarm(village) > Settings.FARM_RADIUS)
+                {
+                    System.Console.WriteLine("Skipping current village because of too large radius.");
+                    continue;
+                }
                 int lcCount;
                 if (village.isBarb) lcCount = Settings.LC_PER_BARB_ATTACK;
                 else lcCount = Settings.LC_PER_PLAYER_ATTACK;
@@ -565,13 +1122,13 @@ namespace TW_Bot
                 }
                 
                 if (onlyBarbs && !village.isBarb || (village.scoutOnTheWay && Settings.INTELLIGENT_FARMING_ENABLED)) continue;
-                if (troops.lc < lcCount)
-                {
-                    System.Console.WriteLine("Not enough LC. Exiting farm function.");
-                    return this;
-                }
+                //if (troops.lc < lcCount)
+                //{
+                    //System.Console.WriteLine("Not enough LC. Exiting farm function.");
+                    //return this;
+                //}
                 // Fill in the troops.
-                if ((village.wall == 0 || !Settings.INTELLIGENT_FARMING_ENABLED) || (village.wall > 0 && !Settings.RAM_SCOUTED_TROOPLESS_WALLS && !Settings.ONLY_ATTACK_NO_WALL))
+                if (troops.lc >= lcCount && (village.wall == 0 || !Settings.INTELLIGENT_FARMING_ENABLED) || (village.wall > 0 && !Settings.RAM_SCOUTED_TROOPLESS_WALLS && !Settings.ONLY_ATTACK_NO_WALL))
                 {
                     browser.TextField(Find.ById("unit_input_light")).TypeText(lcCount.ToString());
                     troops.lc -= lcCount;
@@ -589,17 +1146,18 @@ namespace TW_Bot
                 else if(village.wall > 0 && Settings.RAM_SCOUTED_TROOPLESS_WALLS)
                 {
                     // Send some rams.
-                    if (troops.rams < 4 || troops.lc < 25 || troops.scouts < 1)
+                    if (troops.rams < 10 || troops.axes < 50 || troops.scouts < 1 || village.scoutOnTheWay)
                     {
                         GetTroops();
                         continue;
                     }
                     browser.TextField(Find.ById("unit_input_spy")).TypeText("1");
                     browser.TextField(Find.ById("unit_input_ram")).TypeText("4");
-                    browser.TextField(Find.ById("unit_input_light")).TypeText("25");
+                    browser.TextField(Find.ById("unit_input_axe")).TypeText("50");
                     troops.scouts--;
-                    troops.rams -= 4;
-                    troops.lc -= 25;
+                    troops.rams -= 10;
+                    troops.axes -= 50;
+                    village.scoutOnTheWay = true;
                     // Fill in the village coords.
                     browser.TextField(Find.ByClass(p => p.Contains("target-input-field"))).TypeText(village.GetCoords());
                     browser.Button(Find.ById("target_attack")).Click();
@@ -638,6 +1196,9 @@ namespace TW_Bot
                 
                 // Fetch the moral.
                 int moralAmount = 100; // Barbs always have 100 moral.
+                Table visTable = browser.Table(Find.ByClass("vis"));
+                TableBody visTableBody = (TableBody)(visTable.Children()[0]);
+                village.isBarb = visTableBody.Children().Count == 6; // Players have 7 children here.
                 if (!village.isBarb)
                 {
                     string moral = browser.Table(Find.ByClass("vis")).TableBodies[0].TableRows[5].TableCells[1].InnerHtml;
@@ -650,6 +1211,13 @@ namespace TW_Bot
                 if(moralAmount < Settings.MIN_MORAL && !(Settings.IGNORE_MORAL_IF_WALL_ZERO && village.wall == 0))
                 {
                     System.Console.WriteLine("Ignoring this village because of moral.");
+                    GetTroops();
+                    continue;
+                }
+
+                if(!village.isBarb && onlyBarbs)
+                {
+                    System.Console.WriteLine("This village is now a player village, used to be a barb. Skipping.");
                     GetTroops();
                     continue;
                 }

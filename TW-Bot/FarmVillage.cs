@@ -9,15 +9,21 @@ namespace TW_Bot
         public bool isBarb;
         public int wall;
         public int clay, wood, iron;
-        public int minimumAttackIntervalInMinutes;
+        public double minimumAttackIntervalInMinutes;
         public bool scoutOnTheWay;
         public DateTime scoutTime;
         public DateTime lastSentAttackTime;
+        public DateTime lastScoutReportTime; // Deprecated
+        public DateTime lastAttackETA;
         static Dictionary<int, int> production;
+        public int lastReadReportId; // Replacement for lastScoutReportTime
 
         private FarmVillage()
         {
             lastSentAttackTime = DateTime.Now.AddYears(-1);
+            lastScoutReportTime = DateTime.Now.AddYears(-1);
+            lastAttackETA = DateTime.Now.AddYears(-1);
+            lastReadReportId = -1;
         }
 
         static FarmVillage()
@@ -55,7 +61,7 @@ namespace TW_Bot
             production.Add(30, 2400);
         }
 
-        public FarmVillage(int x, int y, bool isBarb = false, int wall = -1, int clay = -1, int wood = -1, int iron = -1, int minimumAttackIntervalInMinutes = 30)
+        public FarmVillage(int x, int y, bool isBarb = false, int wall = -1, int clay = -1, int wood = -1, int iron = -1, double minimumAttackIntervalInMinutes = 30)
         {
             this.x = x;
             this.y = y;
@@ -66,17 +72,20 @@ namespace TW_Bot
             this.iron = iron;
             scoutOnTheWay = false;
             lastSentAttackTime = DateTime.Now.AddYears(-1);
+            lastScoutReportTime = DateTime.Now.AddYears(-1);
+            lastAttackETA = DateTime.Now.AddYears(-1);
+            lastReadReportId = -1;
             this.minimumAttackIntervalInMinutes = minimumAttackIntervalInMinutes;
         }
 
         public void UpdateAttackInterval(int capacity)
         {
             if (clay <= 0 || wood <= 0 || iron <= 0) return;
-            int resourcesProducedPerMinute = 0;
-            resourcesProducedPerMinute += production[clay] / 60;
-            resourcesProducedPerMinute += production[iron] / 60;
-            resourcesProducedPerMinute += production[wood] / 60;
-            minimumAttackIntervalInMinutes = capacity / resourcesProducedPerMinute;
+            double resourcesProducedPerMinute = 0;
+            resourcesProducedPerMinute += production[clay] / 60.0;
+            resourcesProducedPerMinute += production[iron] / 60.0;
+            resourcesProducedPerMinute += production[wood] / 60.0;
+            minimumAttackIntervalInMinutes = (double)capacity / (double)resourcesProducedPerMinute;
         }
 
         public string GetCoords()
