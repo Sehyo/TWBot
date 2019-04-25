@@ -17,12 +17,12 @@ TWBot can perform a monte-carlo simulation in order to find the optimal LC count
 ### Scavenging ###
 TWBot supports scavenging for all your villages :)
 
-### Control Related Features ###
-## Webpanel and Server Communication ##
+## Control Related Features ##
+### Webpanel and Server Communication ###
 TWBot is controllable by a webpanel, that let's you toggle features on and off.
 SSH Protocol Communication is used to communicate with the server of the webpanel to get updates.
 
-## Push Notifications ##
+### Push Notifications ###
 TWBot supports sending you push notifications to your phone using the pushover.net service.
 We have not yet implemented a method for automatically solving the bot protection captchas for you,
 However, TWBot will notify you by push notification when it is time to do the captcha.
