@@ -1,6 +1,7 @@
 # TWBot #
 Tribalwars Bot
 TWBot is a Tribalwars assistant.
+Runs 100% in the background.
 It currently supports: farming, scavenging, report reading, etc.
 
 # Features #
@@ -31,7 +32,7 @@ However, TWBot will notify you by push notification when it is time to do the ca
 TWBot will tag incomings for you when it runs.
 
 # TO DO #
-1. Make Scavenging work in the background (Right now, all features EXCEPT Scavenging functions in the background).
+1. (DONE) ~~Make Scavenging work in the background (Right now, all features EXCEPT Scavenging functions in the background).~~
 2. Make communication to server more robust.
 3. Make TWBot work with multiple worlds and accounts, right now structure just allows for one.
 4. Make Webpanel prettier.
