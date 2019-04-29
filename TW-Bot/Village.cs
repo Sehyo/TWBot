@@ -335,7 +335,7 @@ namespace TW_Bot
                 if (spearCount > 200) spearCount = 200;
                 if (spearCount < 10) return this;
                 System.Console.WriteLine("Scavenge - current option index: {0}", i);
-                TextField spearText = browser.TextField(Find.ByName("spear"));
+                /*TextField spearText = browser.TextField(Find.ByName("spear"));
                 //spearText.Focus();
                 //spearText.Click();
                 //spearText.Id = "CHANGEME";
@@ -363,7 +363,10 @@ namespace TW_Bot
                 browser.Body.Focus();
                 SetForegroundWindow(browser.hWnd);
                 spearText.Focus();
-                SendKeys.SendWait(spearCount.ToString()); // spearText.Value and .TypeText here doesn't work. Input gets removed. Wtf?
+                SendKeys.SendWait(spearCount.ToString()); // spearText.Value and .TypeText here doesn't work. Input gets removed. Wtf?*/
+                string js = "$(\"input.unitsInput[name='spear']\").val(" + spearCount + ").trigger(\"change\")";
+                System.Console.WriteLine("Injecting javascript for unit entry..");
+                browser.Eval(js);
                 System.Console.WriteLine("Entered Spear Count.");
                 System.Threading.Thread.Sleep(50);
                 options[i].Click();
