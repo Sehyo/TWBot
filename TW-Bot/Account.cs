@@ -15,14 +15,16 @@ namespace TW_Bot
         public string username;
         string password;
         bool isLoggedIn;
-        public string world = "en105";
+        public string world;
 
         public Account(string username, string password)
         {
             this.username = username;
             this.password = password;
             this.isLoggedIn = false;
-            this.villages = ReadFromXmlFile<List<Village>>(username + "/" + world + "/villages.xml");
+            world = Settings.WORLD;
+            Settings.USERNAME = username;
+            this.villages = ReadFromXmlFile<List<Village>>(Settings.USERNAME + "/" + Settings.WORLD + "/" + "SERVER_villages.xml");
             // Workaround to reduce unnecessary data duplication. Requires write XML to set these to NULL before writing aswell except for first entry.
             for (int i = 1; i < villages.Count; i++) villages[i].farmVillages = villages[0].farmVillages;
 

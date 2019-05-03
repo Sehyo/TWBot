@@ -21,7 +21,7 @@ namespace TW_Bot
             if(html.Contains("bot_protection") || html.Contains("bot_check"))
             {
                 System.Console.WriteLine("BOT PROTECTION DETECTED");
-                SendPush();
+                SendPush(Settings.USERNAME + " - " + Settings.WORLD + ": BOT PROTECTION DETECTED");
                 Client.player.Play();
                 System.Console.ReadLine();
                 Client.player.Stop();
@@ -71,7 +71,7 @@ namespace TW_Bot
             if (upload)
             {
                 browser.CaptureWebPageToFile("latest.jpg");
-                Client.UploadAll();
+                Client.UploadScreenCapture();
             }
         }
 

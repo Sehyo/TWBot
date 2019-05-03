@@ -36,20 +36,30 @@ namespace TW_Bot
 
         public Village TagAttacks()
         {
-            // https://en105.tribalwars.net/game.php?village=20012&screen=overview_villages&mode=incomings&subtype=attacks
-            System.Console.WriteLine("---Tagging Incomings---");
-            Utils.GoTo(browser, "https://" + world + ".tribalwars.net/game.php?village=" + villageId + "&screen=overview_villages&mode=incomings&subtype=attacks");
-            WatiN.Core.CheckBox selectAll = browser.CheckBox(Find.ById("select_all"));
-            if(!selectAll.Checked)
+            try
             {
-                System.Console.WriteLine("Checking Check All Incomings CheckBox.");
-                selectAll.Click();
+                // https://en105.tribalwars.net/game.php?village=20012&screen=overview_villages&mode=incomings&subtype=attacks
+                System.Console.WriteLine("---Tagging Incomings---");
+                Utils.GoTo(browser, "https://" + world + ".tribalwars.net/game.php?village=" + villageId + "&screen=overview_villages&mode=incomings&subtype=attacks");
+                Utils.CheckBotProtection(browser.Html);
+                if (!browser.Elements.Exists("select_all")) return this;
+                WatiN.Core.CheckBox selectAll = browser.CheckBox(Find.ById("select_all"));
+                if (!selectAll.Checked)
+                {
+                    System.Console.WriteLine("Checking Check All Incomings CheckBox.");
+                    selectAll.Click();
+                }
+                System.Console.WriteLine("Clicking Mark Button.");
+                WatiN.Core.Button markButton = browser.Button(Find.ByName("label"));
+                markButton.Click();
+                System.Console.WriteLine("Attacks marked.");
+                return this;
             }
-            System.Console.WriteLine("Clicking Mark Button.");
-            WatiN.Core.Button markButton = browser.Button(Find.ByName("label"));
-            markButton.Click();
-            System.Console.WriteLine("Attacks marked.");
-            return this;
+            catch(Exception e)
+            {
+                System.Console.WriteLine(e.Message);
+                return this;
+            }
         }
 
         public void removeDuplicateFarmVillages()
@@ -368,7 +378,7 @@ namespace TW_Bot
                 System.Console.WriteLine("Injecting javascript for unit entry..");
                 browser.Eval(js);
                 System.Console.WriteLine("Entered Spear Count.");
-                System.Threading.Thread.Sleep(50);
+                System.Threading.Thread.Sleep(200);
                 options[i].Click();
                 System.Threading.Thread.Sleep(200);
                 //System.Console.ReadLine();
@@ -541,6 +551,7 @@ namespace TW_Bot
             System.Console.WriteLine("-----Ends Here-----");
 
             // Go to reports tab.
+            // Implement earlier discovered agnostic way when time allows.
             Utils.GoTo(browser, "https://" + world + ".tribalwars.net/game.php?village=" + villageId + "&screen=report&mode=all&group_id=22988");
             Utils.CheckBotProtection(browser.Html);
             browser.RadioButton(Find.ById("filter_dots_none")).Click();
@@ -1014,7 +1025,14 @@ namespace TW_Bot
                     TableCell lcCountCell = browser.TableCell(Find.ById("light"));
                     int lcCount = int.Parse(lcCountCell.InnerHtml);
                     if (lcCount < 5) return this;
-                    if (farms[j].InnerHtml.Contains("disabled")) continue;
+
+                    // 8 = A, 9 = B, 10 = C
+                    TableCell cellA = (TableCell)farms[j].Children()[8];
+                    TableCell cellB = (TableCell)farms[j].Children()[9];
+                    TableCell cellC = (TableCell)farms[j].Children()[10];
+
+                    if (cellA.InnerHtml.Contains("disabled") && cellB.InnerHtml.Contains("disabled")) continue;
+
                     int targetX, targetY;
                     TableCell coordsCell = (TableCell)farms[j].Children()[3];
                     Link coordsLink = (Link)coordsCell.Children()[0];
@@ -1047,11 +1065,6 @@ namespace TW_Bot
 
                     DateTime filterTime = targetVillage.lastAttackETA.AddMinutes(targetVillage.minimumAttackIntervalInMinutes);
                     if (eta < filterTime) continue;
-
-                    // 8 = A, 9 = B, 10 = C
-                    TableCell cellA = (TableCell)farms[j].Children()[8];
-                    TableCell cellB = (TableCell)farms[j].Children()[9];
-                    TableCell cellC = (TableCell)farms[j].Children()[10];
 
                     Link buttonA = (Link)cellA.Children()[0];
                     Link buttonB = (Link)cellB.Children()[0];

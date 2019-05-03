@@ -7,6 +7,7 @@ namespace TW_Bot
     {
         public static string USERNAME = "";
         public static string PASSWORD = "";
+        public static string WORLD = "";
         public static int MIN_MORAL = 80;
         public static int FARM_RADIUS = 21;
         public static int REPORT_READ_INTERVAL_MINUTES = 6000; //* 24 * 2; // How often to read reports in minutes (minimum)

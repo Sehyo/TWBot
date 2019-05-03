@@ -1,5 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IO;
+
 
 namespace TW_Bot
 {
@@ -8,6 +10,15 @@ namespace TW_Bot
         [STAThread]
         static void Main(string[] args)
         {
+            WatiN.Core.Settings.AutoMoveMousePointerToTopLeft = false;
+            Settings.USERNAME = "sehyo";
+            Settings.PASSWORD = "FuckHedge!";
+            string[] worlds = Directory.GetDirectories(Settings.USERNAME + "/");
+            System.Console.WriteLine("Please select:");
+            for (int i = 0; i < worlds.Length; i++)
+                System.Console.WriteLine(i + " for world: " + worlds[i]);
+            Settings.WORLD = new DirectoryInfo(worlds[int.Parse(System.Console.ReadLine())]).Name;
+            System.Console.WriteLine("You have selected {0}", Settings.WORLD);
             System.Console.WriteLine("Starting");
             System.Console.WriteLine("Contacting server.");
             Client.WaitForTurn();
@@ -15,15 +26,12 @@ namespace TW_Bot
             Client.DownloadAll();
             Client.SaveAll();
             //Client.UploadAll();
-            Utils.SendPush("TWBot Started");
             //System.Console.WriteLine("Username pls");
             //Settings.USERNAME = System.Console.ReadLine();
             //System.Console.WriteLine("Password pls");
             //Settings.PASSWORD = System.Console.ReadLine();
-            Settings.USERNAME = "sehyo";
-            Settings.PASSWORD = "FuckHedge!";
+
             Account account = new Account(Settings.USERNAME, Settings.PASSWORD);
-            account.villages = Account.ReadFromXmlFile<List<Village>>("SERVER_villages.xml");
             do
             {
                 System.Console.Clear();
@@ -82,20 +90,18 @@ namespace TW_Bot
                     try
                     {
                         Client.WaitForTurn();
-                        Utils.SendPush("Logging in.");
+                        Utils.SendPush("Logging in (" + Settings.USERNAME + ", " + Settings.WORLD + ").");
                         account.login();
                         //Client.DownloadAll();
                         //Client.SaveAll();
                         //account.browser.CaptureWebPageToFile("latest.jpg");
                         //System.Console.ReadLine();
                         //Account.SimulateOptimalLCCountForFarmAssistantFarming(account.villages, account.villages[0].farmVillages);
-                        Utils.SendPush("Handling villages...");
                         account.villages[0].TagAttacks();
                         account.FarmWithAllVillages();
                         account.villages[0].TagAttacks();
                         account.logout();
-                        Utils.SendPush("Logged out.");
-                        Client.UploadAll();
+                        Utils.SendPush("Logged out (" + Settings.USERNAME + ", " + Settings.WORLD + ").");
                         success = true;
                     }
                     catch(Exception e)
@@ -126,7 +132,7 @@ namespace TW_Bot
                         if (!Settings.NEXT_RESTART_IS_IMMEDIATE)
                         {
                             System.Console.WriteLine("Sleeping for 5 min cos of crash.");
-                            Utils.SendPush("Sleeping for 5 min cos of crash.");
+                            Utils.SendPush(Settings.USERNAME + " - " + Settings.WORLD + ": Sleeping for 5 min cos of crash.");
                             System.Threading.Thread.Sleep(1000 * 60 * 5);
                         }
                     }
@@ -143,7 +149,7 @@ namespace TW_Bot
                 }*/
                 sleepTime = sleepTime * 1000 * 60;
                 System.Console.WriteLine("Sleeping until {0}", DateTime.Now.AddMinutes(((sleepTime / 1000) / 60)));
-                Utils.SendPush("Sleeping until " + DateTime.Now.AddMinutes(((sleepTime / 1000) / 60)));
+                Utils.SendPush(Settings.USERNAME + " - " + Settings.WORLD + ": Sleeping until " + DateTime.Now.AddMinutes(((sleepTime / 1000) / 60)));
                 System.Threading.Thread.Sleep((int)sleepTime);
             }
         }

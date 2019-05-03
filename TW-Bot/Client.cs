@@ -59,11 +59,11 @@ namespace TW_Bot
             }
         }
 
-        public static void DetermineFlow()
+        public static void DetermineFlow() // Ready
         {
             lastServerCommunicationTime = DateTime.Now;
             System.Console.WriteLine("Downloading config.xml\nOur ID is: {0}", ourInstanceIdentifier);
-            configXml = Download("https://www.lunarmerlin.se/twbot/config.xml");
+            configXml = Download("https://www.lunarmerlin.se/twbot/users/" + Settings.USERNAME + "/" + Settings.WORLD + "/" + "config.xml");
             XDocument parsedConfig = ReadConfigXml(configXml);
             System.Console.WriteLine("Setting Farming To: {0}", farmEnabled);
             System.Console.WriteLine("Setting Scavenging To: {0}", scavEnabled);
@@ -123,18 +123,18 @@ namespace TW_Bot
                     }
                 }
                 System.Console.WriteLine("Uploading config.");
-                UploadString(parsedConfig.ToString(), "/var/www/html/twbot/config.xml");
+                UploadString(parsedConfig.ToString(), "/var/www/html/twbot/users/" + Settings.USERNAME + "/" + Settings.WORLD + "/" + "config.xml");
                 System.Console.WriteLine("Uploaded config.");
                 //System.Console.ReadLine();
                 DetermineFlow();
             }
         }
 
-        public static void DownloadAll()
+        public static void DownloadAll() // Ready
         {
             System.Console.WriteLine("Downloading all data.");
-            villagesXml = Download("https://www.lunarmerlin.se/twbot/villages.xml");
-            configXml = Download("https://www.lunarmerlin.se/twbot/config.xml");
+            villagesXml = Download("https://www.lunarmerlin.se/twbot/users/" + Settings.USERNAME + "/" + Settings.WORLD + "/" + "villages.xml");
+            configXml = Download("https://www.lunarmerlin.se/twbot/users/" + Settings.USERNAME + "/" + Settings.WORLD + "/" + "config.xml");
             ReadConfigXml(configXml);
         }
 
@@ -196,16 +196,21 @@ namespace TW_Bot
             return data;
         }
 
-        public static void SaveAll()
+        public static void SaveAll() // Maybe not ready?
         {
-            File.WriteAllText("SERVER_villages.xml", villagesXml);
+            File.WriteAllText(Settings.USERNAME + "/" + Settings.WORLD + "/" + "SERVER_villages.xml", villagesXml);
         }
 
-        public static void UploadAll()
+        public static void UploadAll() // This function is ready for new web panel.
         {
             //UploadString(villagesXml, "/var/www/html/twbot/villages.xml");
-            UploadFile("sehyo/en105/villages.xml", "/var/www/html/twbot/villages.xml");
-            UploadFile("latest.jpg", "/var/www/html/twbot/latest.jpg");
+            UploadFile(Settings.USERNAME + "/" + Settings.WORLD + "/" + "villages.xml", "/var/www/html/twbot/users/" + Settings.USERNAME + "/" + Settings.WORLD + "/" + "villages.xml");
+            UploadFile(Settings.USERNAME + "/" + Settings.WORLD + "/" + "latest.jpg", "/var/www/html/twbot/users/" + Settings.USERNAME + "/" + Settings.WORLD + "/" + "latest.jpg");
+        }
+
+        public static void UploadScreenCapture()
+        {
+            UploadFile(Settings.USERNAME + "/" + Settings.WORLD + "/" + "latest.jpg", "/var/www/html/twbot/users/" + Settings.USERNAME + "/" + Settings.WORLD + "/" + "latest.jpg");
         }
 
         public static void UploadFile(string file, string fileAddress)
