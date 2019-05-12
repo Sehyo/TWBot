@@ -11,14 +11,28 @@ namespace TW_Bot
         static void Main(string[] args)
         {
             WatiN.Core.Settings.AutoMoveMousePointerToTopLeft = false;
-            Settings.USERNAME = "sehyo";
-            Settings.PASSWORD = "FuckHedge!";
+            // First select user.
+            string[] users = Directory.GetDirectories(Directory.GetCurrentDirectory());
+            System.Console.WriteLine("Please select:");
+            for (int i = 0; i < users.Length; i++)
+                System.Console.WriteLine(i + " for world: " + users[i]);
+
+            Settings.USERNAME = new DirectoryInfo(users[int.Parse(System.Console.ReadLine())]).Name;
+
+            // Get the password.
+            System.IO.StreamReader passwordFile = new System.IO.StreamReader(Settings.USERNAME + "/password.txt");
+
+            string line;
+            while ((line = passwordFile.ReadLine()) != null) break; // just read first line.
+            Settings.PASSWORD = line;
+
             string[] worlds = Directory.GetDirectories(Settings.USERNAME + "/");
             System.Console.WriteLine("Please select:");
             for (int i = 0; i < worlds.Length; i++)
                 System.Console.WriteLine(i + " for world: " + worlds[i]);
             Settings.WORLD = new DirectoryInfo(worlds[int.Parse(System.Console.ReadLine())]).Name;
-            System.Console.WriteLine("You have selected {0}", Settings.WORLD);
+
+            System.Console.WriteLine("You have selected {0} - {1}", Settings.USERNAME, Settings.WORLD);
             System.Console.WriteLine("Starting");
             System.Console.WriteLine("Contacting server.");
             Client.WaitForTurn();
@@ -32,7 +46,8 @@ namespace TW_Bot
             //Settings.PASSWORD = System.Console.ReadLine();
 
             Account account = new Account(Settings.USERNAME, Settings.PASSWORD);
-            do
+            // Disabled below cos we auto add villas now.
+            /*do
             {
                 System.Console.Clear();
                 System.Console.WriteLine("Your Current Added Villages:");
@@ -50,7 +65,8 @@ namespace TW_Bot
                 y = int.Parse(System.Console.ReadLine());
                 account.villages.Add(new Village(id, x, y));
                 System.Console.WriteLine("Add more villages?");
-            } while (System.Console.ReadLine().ToUpper().Contains("Y"));
+            } while (System.Console.ReadLine().ToUpper().Contains("Y")); */
+
             // Disabling this for now.
             //System.Console.WriteLine("Finding best radius..({0}|{1})", account.villages[0].x, account.villages[0].y);
             //System.Console.WriteLine("How many lc you got?");
@@ -97,6 +113,10 @@ namespace TW_Bot
                         //account.browser.CaptureWebPageToFile("latest.jpg");
                         //System.Console.ReadLine();
                         //Account.SimulateOptimalLCCountForFarmAssistantFarming(account.villages, account.villages[0].farmVillages);
+
+                        // Add all villas automatically :)
+                        account.AddAllVillages();
+
                         account.villages[0].TagAttacks();
                         account.FarmWithAllVillages();
                         account.villages[0].TagAttacks();

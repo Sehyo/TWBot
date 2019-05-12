@@ -63,7 +63,7 @@ namespace TW_Bot
         {
             lastServerCommunicationTime = DateTime.Now;
             System.Console.WriteLine("Downloading config.xml\nOur ID is: {0}", ourInstanceIdentifier);
-            configXml = Download("https://www.lunarmerlin.se/twbot/users/" + Settings.USERNAME + "/" + Settings.WORLD + "/" + "config.xml");
+            configXml = Download("http://lunarmerlin.asuscomm.com/twbot/users/" + Settings.USERNAME + "/" + Settings.WORLD + "/" + "config.xml");
             XDocument parsedConfig = ReadConfigXml(configXml);
             System.Console.WriteLine("Setting Farming To: {0}", farmEnabled);
             System.Console.WriteLine("Setting Scavenging To: {0}", scavEnabled);
@@ -81,13 +81,12 @@ namespace TW_Bot
             }
             if(activeBotExists)
             {
-                // Is it us?
-                if(ourInstanceIdentifier.Equals(lastActiveId))
+                if(ourInstanceIdentifier.Equals(lastActiveId)) // Is it us?
                 {
                     // it is us.
                     execute = true;
                 }
-                else
+                else if(!Settings.TAKE_CONTROL_ON_START)
                 {
                     System.Console.WriteLine("Already exists other active client.");
                     // Other instance is running already.
@@ -95,8 +94,10 @@ namespace TW_Bot
                     return;
                 }
             }
-            else
+            if(!activeBotExists || Settings.TAKE_CONTROL_ON_START)//if(Settings.TAKE_CONTROL_ON_START)
             {
+                if (Settings.TAKE_CONTROL_ON_START) System.Console.WriteLine("Taking Control even though already active bot exists.");
+                Settings.TAKE_CONTROL_ON_START = false;
                 System.Console.WriteLine("No other active client.");
                 System.Console.WriteLine("Attempting to take ownership.");
                 // No other active bot.
@@ -125,7 +126,6 @@ namespace TW_Bot
                 System.Console.WriteLine("Uploading config.");
                 UploadString(parsedConfig.ToString(), "/var/www/html/twbot/users/" + Settings.USERNAME + "/" + Settings.WORLD + "/" + "config.xml");
                 System.Console.WriteLine("Uploaded config.");
-                //System.Console.ReadLine();
                 DetermineFlow();
             }
         }
@@ -133,8 +133,8 @@ namespace TW_Bot
         public static void DownloadAll() // Ready
         {
             System.Console.WriteLine("Downloading all data.");
-            villagesXml = Download("https://www.lunarmerlin.se/twbot/users/" + Settings.USERNAME + "/" + Settings.WORLD + "/" + "villages.xml");
-            configXml = Download("https://www.lunarmerlin.se/twbot/users/" + Settings.USERNAME + "/" + Settings.WORLD + "/" + "config.xml");
+            villagesXml = Download("http://lunarmerlin.asuscomm.com/twbot/users/" + Settings.USERNAME + "/" + Settings.WORLD + "/" + "villages.xml");
+            configXml = Download("http://lunarmerlin.asuscomm.com/twbot/users/" + Settings.USERNAME + "/" + Settings.WORLD + "/" + "config.xml");
             ReadConfigXml(configXml);
         }
 
@@ -219,7 +219,7 @@ namespace TW_Bot
             FileInfo fileInfo = new FileInfo(file);
             FileStream fileStream = new FileStream(fileInfo.FullName, FileMode.Open);
             if (fileStream == null) return;
-            ConnectionInfo connectionInfo = new ConnectionInfo("lunarmerlin.se", "merlin", new PasswordAuthenticationMethod("merlin", "bonxel140!#\""));
+            ConnectionInfo connectionInfo = new ConnectionInfo("lunarmerlin.asuscomm.com", "merlin", new PasswordAuthenticationMethod("merlin", "bonxel140!#\""));
             using (var client = new SftpClient(connectionInfo))
             {
 
@@ -234,7 +234,7 @@ namespace TW_Bot
         public static void UploadString(string data, string fileAddress)
         {
             System.Console.WriteLine("Uploading: " + fileAddress);
-            ConnectionInfo connectionInfo = new ConnectionInfo("lunarmerlin.se", "merlin", new PasswordAuthenticationMethod("merlin", "bonxel140!#\""));
+            ConnectionInfo connectionInfo = new ConnectionInfo("lunarmerlin.asuscomm.com", "merlin", new PasswordAuthenticationMethod("merlin", "bonxel140!#\""));
             using (var client = new SftpClient(connectionInfo))
             {
 

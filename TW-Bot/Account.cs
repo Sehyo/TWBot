@@ -1,6 +1,6 @@
 ﻿using System.Collections.Generic;
 using WatiN.Core;
-using System.Windows.Forms;
+using System.Text.RegularExpressions;
 using System.Xml.Serialization;
 using System.IO;
 using System;
@@ -242,7 +242,7 @@ namespace TW_Bot
             browser = new IE();
             browser.ClearCache();
             browser.ClearCookies();
-            Utils.GoTo(browser, "https://www.tribalwars.net/sv-se/page/logout");
+            Utils.GoTo(browser, "http://www.tribalwars.net/sv-se/page/logout");
             Utils.GoTo(browser, "http://www.tribalwars.net");
             //browser.Body.Focus();
             browser.TextField(Find.ById("user")).TypeText(username);
@@ -253,7 +253,7 @@ namespace TW_Bot
             Div wContainer = browser.Div(Find.ByClass("worlds-container"));
             wContainer.WaitUntilExists();
             System.Console.WriteLine("Going to world");
-            Utils.GoTo(browser, "https://www.tribalwars.net/sv-se/page/play/" + world);
+            Utils.GoTo(browser, "http://www.tribalwars.net/sv-se/page/play/" + world);
             System.Console.WriteLine("Logged in");
             while (browser.Html == null) System.Threading.Thread.Sleep(100);
             Utils.CheckBotProtection(browser.Html);
@@ -268,7 +268,7 @@ namespace TW_Bot
 
         public void logout()
         {
-            browser.GoTo("https://www.tribalwars.net/sv-se/page/logout");
+            browser.GoTo("http://www.tribalwars.net/sv-se/page/logout");
             browser.Close();
             isLoggedIn = false;
             for (int i = 1; i < villages.Count; i++)
@@ -284,6 +284,58 @@ namespace TW_Bot
                 villages[i].farmVillages = villages[0].farmVillages;
                 villages[i].spikedVillages = villages[0].spikedVillages;
             }
+        }
+
+        public int AddAllVillages() // Adds all villages and returns # of villages.
+        {
+            // public List<Village> villages;
+            List<Village> autoAddedVillages = new List<Village>();
+            // We don't have to worry about not owning village[0] cos even invalid IDs are fine for this.
+            string overviewScreenUrl = "https://" + this.world + ".tribalwars.net/game.php?village=" + this.villages[0].villageId + "&screen=overview_villages&mode=combined&group=0";
+            Utils.GoTo(browser, overviewScreenUrl);
+            Utils.CheckBotProtection(browser.Html);
+            TextField textField = browser.TextField(Find.ByName("page_size"));
+            textField.Value = "1000";
+            browser.Button(Find.ByClass("btn")).Click();
+            Utils.CheckBotProtection(browser.Html);
+
+            SpanCollection spans = browser.Spans.Filter(Find.ByClass("quickedit-label"));
+
+            for(int i = 0; i < spans.Count; i++)
+            {
+                string idString = ((Link)(spans[i].Parent)).Url;
+                idString = idString.Substring((idString.LastIndexOf("game.php") + 8));
+                System.Console.WriteLine(idString);
+                int villageId = int.Parse(Regex.Replace(idString, "[^0-9]", ""));
+                
+                string coordinateString = spans[i].InnerHtml;
+                var match = Regex.Match(coordinateString, @"(\d+\|\d+)");
+                int x = -1, y = -1;
+                try
+                {
+                    string[] coords = match.ToString().Split('|');
+                    x = int.Parse(coords[0]);
+                    y = int.Parse(coords[1]);
+                }
+                catch(Exception e)
+                {
+                    System.Console.WriteLine(e.Message);
+                }
+                System.Console.WriteLine("Adding: {0} - {1}|{2}", villageId, x, y);
+                autoAddedVillages.Add(new Village(villageId, x, y));
+            }
+
+            foreach (Village village in autoAddedVillages)
+            {
+                village.SetBrowser(ref browser);
+                village.SetWorld(world);
+                village.farmVillages = villages[0].farmVillages;
+            }
+
+            villages = autoAddedVillages;
+
+            System.Console.WriteLine("Auto added all villages ({0} villas.)", villages.Count);
+            return villages.Count;
         }
 
         public void FarmWithAllVillages()

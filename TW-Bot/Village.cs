@@ -552,7 +552,37 @@ namespace TW_Bot
 
             // Go to reports tab.
             // Implement earlier discovered agnostic way when time allows.
-            Utils.GoTo(browser, "https://" + world + ".tribalwars.net/game.php?village=" + villageId + "&screen=report&mode=all&group_id=22988");
+            // Fetch account / world unique ID for AM reports.
+            int amReportGroupId = -1;
+            Utils.GoTo(browser, "https://" + world + ".tribalwars.net/game.php?village=" + villageId + "&screen=am_farm");
+            Utils.CheckBotProtection(browser.Html);
+
+            Table plunderTable = browser.Table(Find.ById("plunder_list"));
+            TableBody plunderBody = (TableBody)(plunderTable.Children()[0]);
+            TableRow firstReport = (TableRow)(plunderBody.Children()[2]);
+
+            var hrefs = firstReport.Links;
+            String repLink = "";
+
+            for (int i = 0; i < hrefs.Count; i++)
+            {
+                repLink = hrefs[i].Url;
+                if (repLink.Contains("screen=report")) break;
+            }
+
+            Utils.GoTo(browser, repLink);
+            Utils.CheckBotProtection(browser.Html);
+
+            // Prev much more likely to exist than -next..
+            // Later fix some fail safe incase it doesn't exist
+            Link groupLink = browser.Link(Find.ById("report-prev"));
+
+            string[] parts = groupLink.Url.Split('&'); // /game.php?village=827&screen=report&mode=all&group_id=4181&view=21076544
+            string groupArgument = parts[3]; // group_id=x
+
+            System.Console.WriteLine("Extracted: {0}", groupArgument);
+
+            Utils.GoTo(browser, "https://" + world + ".tribalwars.net/game.php?village=" + villageId + "&screen=report&mode=all&" + groupArgument); // Agnostic way to get to LA reports page.
             Utils.CheckBotProtection(browser.Html);
             browser.RadioButton(Find.ById("filter_dots_none")).Click();
             Utils.CheckBotProtection(browser.Html);
@@ -1024,8 +1054,18 @@ namespace TW_Bot
                 {
                     TableCell lcCountCell = browser.TableCell(Find.ById("light"));
                     int lcCount = int.Parse(lcCountCell.InnerHtml);
-                    if (lcCount < 5) return this;
+                    if (lcCount < 10) return this;
+                    int targetX, targetY;
 
+                    TableCell coordsCell = (TableCell)farms[j].Children()[3];
+                    Link coordsLink = (Link)coordsCell.Children()[0];
+                    string coordsText = coordsLink.InnerHtml.Split(' ')[1].Substring(1);
+                    coordsText = coordsText.Remove(coordsText.Length - 1);
+                    string[] coords = coordsText.Split('|');
+                    targetX = int.Parse(coords[0]);
+                    targetY = int.Parse(coords[1]);
+                    double distance = Math.Sqrt(Math.Pow(targetX - x, 2) + Math.Pow(targetY - y, 2));
+                    if (distance > Settings.FARM_RADIUS) return this;
                     // 8 = A, 9 = B, 10 = C
                     TableCell cellA = (TableCell)farms[j].Children()[8];
                     TableCell cellB = (TableCell)farms[j].Children()[9];
@@ -1033,17 +1073,6 @@ namespace TW_Bot
 
                     if (cellA.InnerHtml.Contains("disabled") && cellB.InnerHtml.Contains("disabled")) continue;
 
-                    int targetX, targetY;
-                    TableCell coordsCell = (TableCell)farms[j].Children()[3];
-                    Link coordsLink = (Link)coordsCell.Children()[0];
-                    //Div coordsDiv = (Div)coordsCell.Children()[0];
-                    //Link coordsLink = (Link)coordsDiv.Children()[0];
-                    string coordsText = coordsLink.InnerHtml.Split(' ')[1].Substring(1);
-                    coordsText = coordsText.Remove(coordsText.Length - 1);
-                    string[] coords = coordsText.Split('|');
-                    targetX = int.Parse(coords[0]);
-                    targetY = int.Parse(coords[1]);
-                    double distance = Math.Sqrt(Math.Pow(targetX - x, 2) + Math.Pow(targetY - y, 2));
                     double travelTime = distance * 10;
                     DateTime eta = DateTime.Now.AddMinutes(travelTime);
                     // Find Farm Village if exists.
