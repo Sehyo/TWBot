@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Numerics;
 
 
 namespace TW_Bot
@@ -11,8 +12,14 @@ namespace TW_Bot
         static void Main(string[] args)
         {
             WatiN.Core.Settings.AutoMoveMousePointerToTopLeft = false;
+
+            System.Console.WriteLine("Use Server? (Y/N)");
+            if (System.Console.ReadLine().ToUpper().Contains("Y")) Settings.USE_SERVER = true;
+            else Settings.USE_SERVER = false;
+
             // First select user.
             string[] users = Directory.GetDirectories(Directory.GetCurrentDirectory());
+
             System.Console.WriteLine("Please select:");
             for (int i = 0; i < users.Length; i++)
                 System.Console.WriteLine(i + " for world: " + users[i]);
@@ -33,6 +40,57 @@ namespace TW_Bot
             Settings.WORLD = new DirectoryInfo(worlds[int.Parse(System.Console.ReadLine())]).Name;
 
             System.Console.WriteLine("You have selected {0} - {1}", Settings.USERNAME, Settings.WORLD);
+
+            System.Console.WriteLine("Activate minting mode? (y/n)");
+            int mintX = 0, mintY = 0;
+            if (System.Console.ReadLine().Contains("y"))
+            {
+                Settings.MINT = true;
+                System.Console.WriteLine("Please enter the X coordinate for the village you want to mint in.");
+            }
+            else
+            {
+                System.Console.WriteLine("Activate Resource Sender Mode? (y/n)");
+                if (System.Console.ReadLine().Contains("y"))
+                {
+                    Settings.SEND_RES = true;
+                    System.Console.WriteLine("Please enter the X coordinate for the village you want to send res to.");
+                }
+                else
+                {
+                    System.Console.WriteLine("Activate Fake Script Mode? (y/n)");
+                    if (System.Console.ReadLine().Contains("y"))
+                    {
+                        Settings.FAKE_SCRIPT = true;
+                        System.Console.WriteLine("Enter name of script in quickbar exactly as it is written.");
+                        Settings.SCRIPT_NAME = System.Console.ReadLine();
+                    }
+                }
+
+            }
+
+            if (Settings.MINT || Settings.SEND_RES)
+            {
+                mintX = int.Parse(System.Console.ReadLine());
+                System.Console.WriteLine("Please enter the Y coordinate");
+                mintY = int.Parse(System.Console.ReadLine());
+
+                System.Console.WriteLine("You have chosen village {0}|{1}", mintX, mintY);
+            }
+            else if(Settings.FAKE_SCRIPT)
+            {
+                System.Console.WriteLine("How many fakes per village do you want to send?");
+                Settings.FAKES_PER_VILLAGE = int.Parse(System.Console.ReadLine());
+            }
+            else
+            {
+                System.Console.WriteLine("Enter Maximum Radius for Farming:");
+                Settings.FARM_RADIUS = int.Parse(System.Console.ReadLine());
+                System.Console.WriteLine("Enable C for farming? (Y/N)");
+                Settings.ENABLE_C_FARMING = System.Console.ReadLine().ToUpper().Contains("Y");
+            }
+            
+
             System.Console.WriteLine("Starting");
             System.Console.WriteLine("Contacting server.");
             Client.WaitForTurn();
@@ -103,6 +161,7 @@ namespace TW_Bot
                 bool success = false;
                 while (!success)
                 {
+                    Settings.SESSION_EXPIRED = false;
                     try
                     {
                         Client.WaitForTurn();
@@ -117,9 +176,59 @@ namespace TW_Bot
                         // Add all villas automatically :)
                         account.AddAllVillages();
 
-                        account.villages[0].TagAttacks();
-                        account.FarmWithAllVillages();
-                        account.villages[0].TagAttacks();
+                        if(Settings.SEND_RES)
+                        {
+                            // Sort village list so we send from closest villas first
+                            Vector2 target = new Vector2(mintX, mintY);
+                            account.villages.Sort((a, b) =>
+                            {
+                                Vector2 aPos = new Vector2(a.x, a.y);
+                                Vector2 bPos = new Vector2(b.x, b.y);
+                                return Vector2.Distance(target, aPos).CompareTo(Vector2.Distance(target, bPos));
+                            });
+
+                            foreach (Village village in account.villages)
+                            {
+                                try
+                                {
+                                    village.SendRes(mintX, mintY);
+                                }
+                                catch (Exception e)
+                                {
+                                    System.Console.WriteLine("Send Res Error: {0}", e.Message);
+                                    System.Console.ReadLine();
+                                }
+                            }
+                        }
+                        else if (Settings.FAKE_SCRIPT)
+                        {
+                            foreach (Village village in account.villages) village.SendFakes();
+                        }
+                        else if(!Settings.MINT)
+                        {
+                            account.villages[0].TagAttacks();
+                            account.FarmWithAllVillages();
+                            account.villages[0].TagAttacks();
+                        }
+                        else
+                        {
+                            // Get mint village
+                            foreach(Village village in account.villages)
+                            {
+                                if(village.x == mintX && village.y == mintY)
+                                {
+                                    try
+                                    {
+                                        village.Mint();
+                                    }
+                                    catch(Exception e)
+                                    {
+                                        System.Console.WriteLine("Minting error: {0}", e.Message);
+                                    }
+                                    break;
+                                }
+                            }
+                        }
                         account.logout();
                         Utils.SendPush("Logged out (" + Settings.USERNAME + ", " + Settings.WORLD + ").");
                         success = true;
@@ -158,6 +267,8 @@ namespace TW_Bot
                     }
                 }
                 double sleepTime = random.Next(15, 25);
+                if (Settings.SESSION_EXPIRED) sleepTime = 0.5; // Half minute for debugging fast.
+                if (Settings.SEND_RES) sleepTime = random.Next(55, 130);
                 /*foreach(Village village in account.villages)
                 {
                     if (village.SoonestScavengeCompletionTime == null) continue;

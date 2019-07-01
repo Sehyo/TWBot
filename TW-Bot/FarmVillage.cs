@@ -15,6 +15,7 @@ namespace TW_Bot
         public DateTime lastSentAttackTime;
         public DateTime lastScoutReportTime; // Deprecated
         public DateTime lastAttackETA;
+        public DateTime lastCFarmETA;
         static Dictionary<int, int> production;
         public int lastReadReportId; // Replacement for lastScoutReportTime
 
@@ -23,6 +24,7 @@ namespace TW_Bot
             lastSentAttackTime = DateTime.Now.AddYears(-1);
             lastScoutReportTime = DateTime.Now.AddYears(-1);
             lastAttackETA = DateTime.Now.AddYears(-1);
+            lastCFarmETA = DateTime.Now.AddYears(-1);
             lastReadReportId = -1;
         }
 
@@ -74,6 +76,7 @@ namespace TW_Bot
             lastSentAttackTime = DateTime.Now.AddYears(-1);
             lastScoutReportTime = DateTime.Now.AddYears(-1);
             lastAttackETA = DateTime.Now.AddYears(-1);
+            lastCFarmETA = DateTime.Now.AddYears(-1);
             lastReadReportId = -1;
             this.minimumAttackIntervalInMinutes = minimumAttackIntervalInMinutes;
         }

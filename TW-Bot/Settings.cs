@@ -13,7 +13,7 @@ namespace TW_Bot
         public static int FARM_RADIUS = 20;
         public static int REPORT_READ_INTERVAL_MINUTES = 6000; //* 24 * 2; // How often to read reports in minutes (minimum)
         // Requires premium, because of report filtering. Will check new reports, send rams to troop less villages with walls > 0. Will not farm villages that were unsuccessful to farm before (spiked, etc).
-        public static bool FA_FARMING_ENABLED = false;
+        public static bool FA_FARMING_ENABLED = true;
         public static bool INTELLIGENT_FARMING_ENABLED = false;
         // Following variables are part of intelligent farming:
         public static bool IGNORE_MORAL_IF_WALL_ZERO = true;
@@ -26,6 +26,9 @@ namespace TW_Bot
         public static bool PUSH_NOTIFICATIONS_ENABLED = true;
         public static bool FARMING_ENABLED = false; // If set to false, won't farm at all, even if intelligent farming is enabled.
         public static bool SORT_FARMS_BY_DISTANCE = true; // False -> sort by attack time.
+        // Minting.
+        public static bool MINT = false;
+        public static bool SEND_RES = false;
         // UNIT SETTINGS
         public static int LC_PER_BARB_ATTACK = 10;
         public static int LC_PER_PLAYER_ATTACK = 10;
@@ -38,5 +41,18 @@ namespace TW_Bot
 
         public static double PROGRESS = 0.0;
         public static string STATUS = "";
+
+        public static bool USE_SERVER = false;
+        public static bool ENABLE_C_FARMING = false;
+        public static bool FAKE_SCRIPT = false;
+        public static string SCRIPT_NAME = "";
+        public static int FAKES_PER_VILLAGE = 20;
+        public static int FAKE_COUNTER = 0;
+
+        public static int WOOD_SENT = 0;
+        public static int IRON_SENT = 0;
+        public static int CLAY_SENT = 0;
+
+        public static bool SESSION_EXPIRED = false; // This means we were logged out usually by real person.
     }
 }

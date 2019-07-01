@@ -30,18 +30,25 @@ namespace TW_Bot
 
         public static async void SendPush(string message = "BOT PROTECTION DETECTED")
         {
-            var values = new Dictionary<string, string>
+            try
+            {
+                var values = new Dictionary<string, string>
             {
                 { "token", "anxdjsmgavf9f39v954yhx7a99jh1k" },
                 { "user", "goyg973rfzm36uy96vcri92zs2kifv" },
                 { "message", message }
             };
 
-            var content = new FormUrlEncodedContent(values);
+                var content = new FormUrlEncodedContent(values);
 
-            var response = await client.PostAsync("https://api.pushover.net/1/messages.json", content);
+                var response = await client.PostAsync("https://api.pushover.net/1/messages.json", content);
 
-            var responseString = await response.Content.ReadAsStringAsync();
+                var responseString = await response.Content.ReadAsStringAsync();
+            }
+            catch
+            {
+                System.Console.WriteLine("SendPush function crashed");
+            }
         }
 
         public static void GoTo(IE browser, string url)

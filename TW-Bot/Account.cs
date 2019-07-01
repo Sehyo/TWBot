@@ -24,10 +24,11 @@ namespace TW_Bot
             this.isLoggedIn = false;
             world = Settings.WORLD;
             Settings.USERNAME = username;
-            this.villages = ReadFromXmlFile<List<Village>>(Settings.USERNAME + "/" + Settings.WORLD + "/" + "SERVER_villages.xml");
+            if(Settings.USE_SERVER) this.villages = ReadFromXmlFile<List<Village>>(Settings.USERNAME + "/" + Settings.WORLD + "/" + "SERVER_villages.xml");
+            else this.villages = ReadFromXmlFile<List<Village>>(Settings.USERNAME + "/" + Settings.WORLD + "/" + "villages.xml");
             // Workaround to reduce unnecessary data duplication. Requires write XML to set these to NULL before writing aswell except for first entry.
             for (int i = 1; i < villages.Count; i++) villages[i].farmVillages = villages[0].farmVillages;
-
+                
             
             //villages[0].GetTroops();
             //System.Console.WriteLine("Finding best radius..({0}|{1})", villages[0].x, villages[0].y);
@@ -292,12 +293,27 @@ namespace TW_Bot
             List<Village> autoAddedVillages = new List<Village>();
             // We don't have to worry about not owning village[0] cos even invalid IDs are fine for this.
             string overviewScreenUrl = "https://" + this.world + ".tribalwars.net/game.php?village=" + this.villages[0].villageId + "&screen=overview_villages&mode=combined&group=0";
+            //&screen=overview_villages&page=-1&order=ram&dir=desc&mode=combined&group=0
+            if (Settings.FAKE_SCRIPT) overviewScreenUrl = "https://" + this.world + ".tribalwars.net/game.php?village=" + this.villages[0].villageId + "&screen=overview_villages&page=-1&order=ram&dir=desc&mode=combined&group=0";
             Utils.GoTo(browser, overviewScreenUrl);
             Utils.CheckBotProtection(browser.Html);
-            TextField textField = browser.TextField(Find.ByName("page_size"));
-            textField.Value = "1000";
-            browser.Button(Find.ByClass("btn")).Click();
-            Utils.CheckBotProtection(browser.Html);
+            try
+            {
+                TextField textField = browser.TextField(Find.ByName("page_size"));
+                textField.Value = "1000";
+                browser.Button(Find.ByClass("btn")).Click();
+                Utils.CheckBotProtection(browser.Html);
+            }
+            catch(Exception e)
+            {
+
+            }
+
+            if(Settings.FAKE_SCRIPT)
+            {
+                Utils.GoTo(browser, overviewScreenUrl);
+                Utils.CheckBotProtection(browser.Html);
+            }
 
             SpanCollection spans = browser.Spans.Filter(Find.ByClass("quickedit-label"));
 

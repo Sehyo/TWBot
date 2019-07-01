@@ -37,6 +37,11 @@ namespace TW_Bot
 
         public static void WaitForTurn()
         {
+            if (!Settings.USE_SERVER)
+            {
+                execute = true;
+                return;
+            }
             if(lastServerCommunicationTime != null)
             {
                 if(execute)
@@ -61,6 +66,7 @@ namespace TW_Bot
 
         public static void DetermineFlow() // Ready
         {
+            if (!Settings.USE_SERVER) return;
             lastServerCommunicationTime = DateTime.Now;
             System.Console.WriteLine("Downloading config.xml\nOur ID is: {0}", ourInstanceIdentifier);
             configXml = Download("http://lunarmerlin.asuscomm.com/twbot/users/" + Settings.USERNAME + "/" + Settings.WORLD + "/" + "config.xml");
@@ -132,6 +138,7 @@ namespace TW_Bot
 
         public static void DownloadAll() // Ready
         {
+            if (!Settings.USE_SERVER) return;
             System.Console.WriteLine("Downloading all data.");
             villagesXml = Download("http://lunarmerlin.asuscomm.com/twbot/users/" + Settings.USERNAME + "/" + Settings.WORLD + "/" + "villages.xml");
             configXml = Download("http://lunarmerlin.asuscomm.com/twbot/users/" + Settings.USERNAME + "/" + Settings.WORLD + "/" + "config.xml");
@@ -187,6 +194,7 @@ namespace TW_Bot
 
         public static string Download(string fileAddress)
         {
+            if (!Settings.USE_SERVER) return "";
             System.Console.WriteLine("Downloading: " + fileAddress);
             string data = "";
             using (var client = new WebClient())
@@ -198,11 +206,18 @@ namespace TW_Bot
 
         public static void SaveAll() // Maybe not ready?
         {
+            if (!Settings.USE_SERVER) return;
             File.WriteAllText(Settings.USERNAME + "/" + Settings.WORLD + "/" + "SERVER_villages.xml", villagesXml);
+            //File.WriteAllText(Settings.USERNAME + "/" + Settings.WORLD + "/" + "villages.xml", villagesXml);
         }
 
         public static void UploadAll() // This function is ready for new web panel.
         {
+            if (!Settings.USE_SERVER)
+            {
+                SaveAll();
+                return;
+            }
             //UploadString(villagesXml, "/var/www/html/twbot/villages.xml");
             UploadFile(Settings.USERNAME + "/" + Settings.WORLD + "/" + "villages.xml", "/var/www/html/twbot/users/" + Settings.USERNAME + "/" + Settings.WORLD + "/" + "villages.xml");
             UploadFile(Settings.USERNAME + "/" + Settings.WORLD + "/" + "latest.jpg", "/var/www/html/twbot/users/" + Settings.USERNAME + "/" + Settings.WORLD + "/" + "latest.jpg");
@@ -210,11 +225,13 @@ namespace TW_Bot
 
         public static void UploadScreenCapture()
         {
+            if (!Settings.USE_SERVER) return;
             UploadFile(Settings.USERNAME + "/" + Settings.WORLD + "/" + "latest.jpg", "/var/www/html/twbot/users/" + Settings.USERNAME + "/" + Settings.WORLD + "/" + "latest.jpg");
         }
 
         public static void UploadFile(string file, string fileAddress)
         {
+            if (!Settings.USE_SERVER) return;
             System.Console.WriteLine("Uploading: " + file);
             FileInfo fileInfo = new FileInfo(file);
             FileStream fileStream = new FileStream(fileInfo.FullName, FileMode.Open);
@@ -233,6 +250,7 @@ namespace TW_Bot
 
         public static void UploadString(string data, string fileAddress)
         {
+            if (!Settings.USE_SERVER) return;
             System.Console.WriteLine("Uploading: " + fileAddress);
             ConnectionInfo connectionInfo = new ConnectionInfo("lunarmerlin.asuscomm.com", "merlin", new PasswordAuthenticationMethod("merlin", "bonxel140!#\""));
             using (var client = new SftpClient(connectionInfo))

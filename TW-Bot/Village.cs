@@ -5,6 +5,7 @@ using System;
 using System.Windows.Forms;
 using System.Numerics;
 using System.Runtime.InteropServices;
+using Button = WatiN.Core.Button;
 
 namespace TW_Bot
 {
@@ -32,6 +33,75 @@ namespace TW_Bot
             this.troops = new Troops();
             this.totalTroops = new Troops();
             this.villageId = -1;
+        }
+
+        public Village SendRes(int x, int y)
+        {
+            if (this.x == x && this.y == y) return this;
+            Utils.GoTo(browser, "https://" + world + ".tribalwars.net/game.php?village=" + villageId + "&screen=market&mode=send");
+            Utils.CheckBotProtection(browser.Html);
+            int potentialWood = 0, potentialClay = 0, potentialIron = 0;
+            int sendLimit = int.Parse(browser.Span(Find.ById("market_merchant_available_count")).InnerHtml) * 1000;
+            potentialWood = int.Parse(Regex.Replace(browser.Link(Find.ByClass("insert wood")).InnerHtml, "[^0-9]", ""));
+            potentialClay = int.Parse(Regex.Replace(browser.Link(Find.ByClass("insert stone")).InnerHtml, "[^0-9]", ""));
+            potentialIron = int.Parse(Regex.Replace(browser.Link(Find.ByClass("insert iron")).InnerHtml, "[^0-9]", ""));
+            if (potentialWood == 0 && potentialClay == 0 && potentialIron == 0) return this;
+            // Quota: 36% clay, 34% wood, 30% iron
+            int desiredWood, desiredClay, desiredIron;
+            desiredWood = (int)((potentialWood < (sendLimit * 0.34)) ? potentialWood : (sendLimit * 0.34));
+            desiredClay = (int)((potentialClay < (sendLimit * 0.36)) ? potentialClay : (sendLimit * 0.36));
+            desiredIron = (int)((potentialIron < (sendLimit * 0.30)) ? potentialIron : (sendLimit * 0.30));
+            // Fill in res.
+            browser.TextField(Find.ByName("wood")).TypeText(desiredWood.ToString());
+            browser.TextField(Find.ByName("stone")).TypeText(desiredClay.ToString());
+            browser.TextField(Find.ByName("iron")).TypeText(desiredIron.ToString());
+            // Type in coords.
+            browser.TextField(Find.ByName("input")).TypeText(x.ToString() + "|" + y.ToString());
+            // Send
+            browser.Button(Find.ByClass("btn")).Click();
+            Utils.CheckBotProtection(browser.Html);
+            browser.Button(Find.ByClass("btn")).Click();
+            Settings.WOOD_SENT += desiredWood;
+            Settings.CLAY_SENT += desiredClay;
+            Settings.IRON_SENT += desiredIron;
+            System.Console.WriteLine("{0} wood, {1} clay and {2} iron sent so far.", Settings.WOOD_SENT, Settings.CLAY_SENT, Settings.IRON_SENT);
+            return this;
+        }
+
+        public Village Mint()
+        {
+            Random random = new Random(DateTime.Now.Millisecond);
+            while (true)
+            {
+                Utils.GoTo(browser, "https://" + world + ".tribalwars.net/game.php?village=" + villageId + "&screen=snob");
+                Utils.CheckBotProtection(browser.Html);
+                if(browser.Url.Contains("session_expired"))
+                {
+                    System.Console.WriteLine("Session expired!");
+                    Settings.SESSION_EXPIRED = true;
+                    break;
+                }
+                System.Console.WriteLine("Checking if minting button exists..");
+                Button submitButton = browser.Button(Find.ByClass("btn btn-default"));
+                if(submitButton.Exists)
+                {
+                    System.Console.WriteLine("Button exists!");
+                    System.Console.WriteLine("Selecting max coin amount.");
+                    browser.Link(Find.ById("coin_mint_fill_max")).Click();
+                    System.Console.WriteLine("Pressing mint button.");
+                    System.Threading.Thread.Sleep(3000);
+                    submitButton.Click();
+                }
+                else
+                {
+                    System.Console.WriteLine("Button doesn't exist!");
+                }
+                double sleepTime = random.Next(1000, 2000) * 60;
+                System.Console.WriteLine("Sleeping for {0} minutes before refreshing.", (sleepTime / 60) / 1000);
+                System.Threading.Thread.Sleep((int)sleepTime);
+                System.Console.WriteLine("Refreshing...");
+            }
+            return this;
         }
 
         public Village TagAttacks()
@@ -345,35 +415,6 @@ namespace TW_Bot
                 if (spearCount > 200) spearCount = 200;
                 if (spearCount < 10) return this;
                 System.Console.WriteLine("Scavenge - current option index: {0}", i);
-                /*TextField spearText = browser.TextField(Find.ByName("spear"));
-                //spearText.Focus();
-                //spearText.Click();
-                //spearText.Id = "CHANGEME";
-                //string jsCode = "var e = jQuery.Event('keydown'); e.which = 50; $('#CHANGEME').trigger(e);";
-
-                //string jsCode = "var evt = new KeyboardEvent('keydown', { 'keyCode':50, 'which':50}); document.getElementById('CHANGEME').dispatchEvent(evt);";
-                //string jsCode = "$(\"#CHANGEME\").val('200');";
-                //browser.Eval(jsCode);
-                //spearText.SetAttributeValue("readonly", "true");
-
-                //System.Console.ReadLine();
-                //spearText.TypeText("2");
-                //string jsElementRef = spearText.GetJavascriptElementReference();
-                //browser.
-                //browser.
-                //spearText.SetAttributeValue("value", spearCount.ToString());
-                //spearText.
-                //System.Console.WriteLine("Entered 200.");
-
-
-                //spearText.Value = "200"; // Doesn't work. Text disappears.
-                //spearText.TypeText("200"); // Doesn't work. Text disappears.
-                // Work Around:
-                SetForegroundWindow(browser.hWnd);
-                browser.Body.Focus();
-                SetForegroundWindow(browser.hWnd);
-                spearText.Focus();
-                SendKeys.SendWait(spearCount.ToString()); // spearText.Value and .TypeText here doesn't work. Input gets removed. Wtf?*/
                 string js = "$(\"input.unitsInput[name='spear']\").val(" + spearCount + ").trigger(\"change\")";
                 System.Console.WriteLine("Injecting javascript for unit entry..");
                 browser.Eval(js);
@@ -999,6 +1040,55 @@ namespace TW_Bot
             return reportDateTime;
         }
 
+        public Village SendFakes()
+        {
+            GetTroops();
+            Link scriptLink = null;
+            // Go to rally point.
+            Utils.GoTo(browser, "https://" + world + ".tribalwars.net/game.php?village=" + villageId + "&screen=place");
+            Utils.CheckBotProtection(browser.Html);
+            try
+            {
+                for(int i = 0; i < Settings.FAKES_PER_VILLAGE; i++)
+                {
+                    // Find script link
+                    foreach (Link link in browser.Links)
+                    {
+                        if (link.InnerHtml.ToUpper().Contains(Settings.SCRIPT_NAME.ToUpper()))
+                        {
+                            scriptLink = link;
+                            System.Console.WriteLine("Found the script link.");
+                            break;
+                        }
+                    }
+
+                    if (scriptLink == null)
+                    {
+                        System.Console.WriteLine("Error: Couldn't find the script link. Did you enter the name right? Pls restart bot.");
+                        System.Console.ReadLine();
+                        Environment.Exit(0);
+                    }
+
+                    System.Console.WriteLine("Clicking Script Link");
+                    scriptLink.Click();
+
+                    Button attackButton = browser.Button(Find.ByName("attack"));
+                    System.Console.WriteLine("Clicking attack button.");
+                    attackButton.Click();
+                    Button confirmAttackButton = browser.Button(Find.ById("troop_confirm_go"));
+                    System.Console.WriteLine("Clicking confirm button.");
+                    confirmAttackButton.Click();
+                    Settings.FAKE_COUNTER++;
+                    System.Console.WriteLine("Sent out {0} fakes", Settings.FAKE_COUNTER);
+                }
+            }
+            catch
+            {
+                return this; // Lazy way of detecting when we run out of units to fake with lol.
+            }
+            return this;
+        }
+
         public Village ScoutSpiked()
         {
             System.Console.WriteLine("Scouting spiked villages.");
@@ -1040,6 +1130,68 @@ namespace TW_Bot
             Random random = new Random(DateTime.Now.Millisecond);
             // Make sure attacked checkbox is checked.
             System.Console.WriteLine("STARTING FA FARMING");
+
+            Troops aTroops = new Troops(), bTroops = new Troops();
+            WatiN.Core.Form aForm = browser.Forms[0];
+            WatiN.Core.Form bForm = browser.Forms[1];
+
+            Table table = (Table)(aForm.Children()[0]);
+
+            TableBody tableBody = (TableBody)(table.Children()[0]);
+            TableRow tableRow = (TableRow)(tableBody.Children()[1]);
+
+            foreach (Element element in tableRow.Children())
+            {
+                TableCell cell = (TableCell)element;
+                try
+                {
+                    TextField textField = ((TextField)cell.Children()[0]);
+                    if (textField.Name.Contains("spear")) aTroops.spears = int.Parse(textField.Value);
+                    else if (textField.Name.Contains("sword")) aTroops.swords = int.Parse(textField.Value);
+                    else if (textField.Name.Contains("axe")) aTroops.axes = int.Parse(textField.Value);
+                    else if (textField.Name.Contains("marcher")) aTroops.archers = int.Parse(textField.Value); // Marcher must be checked before archer or we have a bug.
+                    else if (textField.Name.Contains("spy")) aTroops.scouts = int.Parse(textField.Value);
+                    else if (textField.Name.Contains("light")) aTroops.lc = int.Parse(textField.Value);
+                    else if (textField.Name.Contains("archer")) aTroops.ma = int.Parse(textField.Value);
+                    else if (textField.Name.Contains("heavy")) aTroops.hc = int.Parse(textField.Value);
+                }
+                catch
+                {
+
+                }
+            }
+
+            table = (Table)(bForm.Children()[0]);
+            tableBody = (TableBody)(table.Children()[0]);
+            tableRow = (TableRow)(tableBody.Children()[1]);
+
+            foreach (Element element in tableRow.Children())
+            {
+                TableCell cell = (TableCell)element;
+                try
+                {
+                    TextField textField = (TextField)(cell.Children()[0]);
+                    if (textField.Name.Contains("spear")) bTroops.spears = int.Parse(textField.Value);
+                    else if (textField.Name.Contains("sword")) bTroops.swords = int.Parse(textField.Value);
+                    else if (textField.Name.Contains("axe")) bTroops.axes = int.Parse(textField.Value);
+                    else if (textField.Name.Contains("marcher")) bTroops.archers = int.Parse(textField.Value); // Marcher must be checked before archer or we have a bug.
+                    else if (textField.Name.Contains("spy")) bTroops.scouts = int.Parse(textField.Value);
+                    else if (textField.Name.Contains("light")) bTroops.lc = int.Parse(textField.Value);
+                    else if (textField.Name.Contains("archer")) bTroops.ma = int.Parse(textField.Value);
+                    else if (textField.Name.Contains("heavy")) bTroops.hc = int.Parse(textField.Value);
+                }
+                catch
+                {
+
+                }
+            }
+
+            int aCapacity = aTroops.GetCapacity();
+            int bCapacity = bTroops.GetCapacity();
+
+            System.Console.WriteLine("A Capacity is {0} and B Capacity is {1}.", aCapacity, bCapacity);
+
+
             for (int i = 0; !browser.Url.Contains("&&"); i++) // url will contain && only when we have passed the last page.
             {
                 Utils.GoTo(browser, "https://" + world + ".tribalwars.net/game.php?village=" + villageId + "&screen=am_farm&order=distance&dir=asc&Farm_page=" + i);
@@ -1052,9 +1204,42 @@ namespace TW_Bot
 
                 for (int j = 2; j < farms.Count; j++)
                 {
-                    TableCell lcCountCell = browser.TableCell(Find.ById("light"));
-                    int lcCount = int.Parse(lcCountCell.InnerHtml);
-                    if (lcCount < 10) return this;
+                    Troops troopsLeft = new Troops();
+
+                    TableCell unitCell = browser.TableCell(Find.ById("spear"));
+                    troopsLeft.spears = int.Parse(unitCell.InnerHtml);
+
+                    unitCell = browser.TableCell(Find.ById("sword"));
+                    troopsLeft.swords = int.Parse(unitCell.InnerHtml);
+
+                    unitCell = browser.TableCell(Find.ById("axe"));
+                    troopsLeft.axes = int.Parse(unitCell.InnerHtml);
+
+                    unitCell = browser.TableCell(Find.ById("archer"));
+                    troopsLeft.archers = int.Parse(unitCell.InnerHtml);
+
+                    unitCell = browser.TableCell(Find.ById("spy"));
+                    troopsLeft.scouts = int.Parse(unitCell.InnerHtml);
+
+                    unitCell = browser.TableCell(Find.ById("light"));
+                    troopsLeft.lc = int.Parse(unitCell.InnerHtml);
+
+                    unitCell = browser.TableCell(Find.ById("marcher"));
+                    troopsLeft.ma = int.Parse(unitCell.InnerHtml);
+
+                    unitCell = browser.TableCell(Find.ById("heavy"));
+                    troopsLeft.hc = int.Parse(unitCell.InnerHtml);
+
+                    bool canSendA, canSendB;
+                    canSendA = troopsLeft.DoWeHaveTheseTroops(aTroops);
+                    canSendB = troopsLeft.DoWeHaveTheseTroops(bTroops);
+
+                    if (!canSendA && !canSendB)
+                    {
+                        System.Console.WriteLine("Returning as we don't have enough troops for A or B.");
+                        //System.Console.ReadLine();
+                        return this;
+                    }
                     int targetX, targetY;
 
                     TableCell coordsCell = (TableCell)farms[j].Children()[3];
@@ -1065,16 +1250,34 @@ namespace TW_Bot
                     targetX = int.Parse(coords[0]);
                     targetY = int.Parse(coords[1]);
                     double distance = Math.Sqrt(Math.Pow(targetX - x, 2) + Math.Pow(targetY - y, 2));
-                    if (distance > Settings.FARM_RADIUS) return this;
+                    System.Console.WriteLine("Is distance larger than farm radius? : " + (distance > Settings.FARM_RADIUS) + " : distance == " + distance + " Farm Radius == " + Settings.FARM_RADIUS);
+                    if (distance > Settings.FARM_RADIUS)
+                    {
+                        System.Console.WriteLine("Returning because distance > radius");
+                        return this;
+                    }
                     // 8 = A, 9 = B, 10 = C
                     TableCell cellA = (TableCell)farms[j].Children()[8];
                     TableCell cellB = (TableCell)farms[j].Children()[9];
                     TableCell cellC = (TableCell)farms[j].Children()[10];
 
-                    if (cellA.InnerHtml.Contains("disabled") && cellB.InnerHtml.Contains("disabled")) continue;
+                    if (cellA.InnerHtml.Contains("disabled") && cellB.InnerHtml.Contains("disabled"))
+                    {
+                        System.Console.WriteLine("Returning because cellA and cellB contains disabled.");
+                        continue;
+                    }
 
-                    double travelTime = distance * 10;
-                    DateTime eta = DateTime.Now.AddMinutes(travelTime);
+                    bool cellCAvailable = !(cellC.InnerHtml.Contains("disabled") || cellC.InnerHtml.Contains("?"));
+
+                    double travelTimeA = distance * aTroops.GetSlowestSpeed();
+                    DateTime etaA = DateTime.Now.AddMinutes(travelTimeA);
+
+                    double travelTimeB = distance * bTroops.GetSlowestSpeed();
+                    DateTime etaB = DateTime.Now.AddMinutes(travelTimeB);
+
+                    double travelTimeC = distance * 18; // Need to make this more accurate somehow later.
+                    DateTime etaC = DateTime.Now.AddMinutes(travelTimeC);
+
                     // Find Farm Village if exists.
                     FarmVillage targetVillage = null;
                     foreach (FarmVillage farmVillage in farmVillages)
@@ -1088,47 +1291,66 @@ namespace TW_Bot
                         // Target Village doesn't exist in our list.
                         // Let's add it.
                         // public FarmVillage(int x, int y, bool isBarb = false, int wall = -1, int clay = -1, int wood = -1, int iron = -1, double minimumAttackIntervalInMinutes = 120)
+                        System.Console.WriteLine("Previously unknown village, adding " + targetX + "|" + targetY);
                         targetVillage = new FarmVillage(targetX, targetY, true);
                         farmVillages.Add(targetVillage);
                     }
 
-                    DateTime filterTime = targetVillage.lastAttackETA.AddMinutes(targetVillage.minimumAttackIntervalInMinutes);
-                    if (eta < filterTime) continue;
+                    targetVillage.UpdateAttackInterval(aTroops.GetCapacity());
+                    DateTime AFilterTime = targetVillage.lastAttackETA.AddMinutes(targetVillage.minimumAttackIntervalInMinutes);
+
+                    targetVillage.UpdateAttackInterval(bTroops.GetCapacity());
+                    DateTime BFilterTime = targetVillage.lastAttackETA.AddMinutes(targetVillage.minimumAttackIntervalInMinutes);
+
+                    canSendA = etaA >= AFilterTime;
+                    canSendB = etaB >= BFilterTime;
+
+                    bool canSendC = targetVillage.lastCFarmETA > DateTime.Now;
+
+                    if (!canSendA && !canSendB && !Settings.ENABLE_C_FARMING)
+                    {
+                        System.Console.WriteLine("Continuing because of filter times and C not enabled.");
+                        continue;
+                    }
+
+                    if(!canSendA && !canSendB && !canSendC)
+                    {
+                        System.Console.WriteLine("Continuing because village already has a C Farm attack going there (probably).");
+                        continue;
+                    }
 
                     Link buttonA = (Link)cellA.Children()[0];
                     Link buttonB = (Link)cellB.Children()[0];
-                    //Link buttonC = (Link)cellC.Children()[0];
 
-                    //Link buttonA = (Link)((Div)cellA.Children()[0]).Children()[0];
-                    //Link buttonB = (Link)((Div)cellB.Children()[0]).Children()[0];
-                    //Link buttonC = (Link)((Div)cellC.Children()[0]).Children()[0];
-
-                    TableCell lcs = browser.TableCell(Find.ById("light"));
-                    TableCell scouts = browser.TableCell(Find.ById("spy"));
-
-                    int lcLeft = int.Parse(lcs.InnerHtml);
-                    int scoutsLeft = int.Parse(scouts.InnerHtml);
-
-                    System.Console.WriteLine("LCs left: {0}", lcLeft);
-                    System.Console.WriteLine("Scouts left: {0}", scoutsLeft);
-
-                    if (!buttonA.OuterHtml.Contains("disabled") && lcLeft >= Settings.LC_PER_BARB_ATTACK && scoutsLeft >= 1)
+                    
+                    // Only if C is available, enabled, and last known attack is not too old.
+                    if (cellCAvailable && Settings.ENABLE_C_FARMING && (DateTime.Now - targetVillage.lastAttackETA).TotalHours < 24)//((Settings.FARM_RADIUS * 11) / 60))
+                    {
+                        Link buttonC = (Link)cellC.Children()[0];
+                        buttonC.Click();
+                        targetVillage.lastAttackETA = etaC;
+                        targetVillage.lastCFarmETA = etaC;
+                        targetVillage.lastSentAttackTime = DateTime.Now;
+                        System.Threading.Thread.Sleep(random.Next(200, 300));
+                        Utils.CheckBotProtection(browser.Html);
+                    }
+                    else if (!buttonA.OuterHtml.Contains("disabled") && canSendA)
                     {
                         buttonA.Click();
-                        targetVillage.lastAttackETA = eta;
+                        targetVillage.lastAttackETA = etaA;
                         targetVillage.lastSentAttackTime = DateTime.Now;
                         System.Threading.Thread.Sleep(random.Next(200, 300));
                         Utils.CheckBotProtection(browser.Html);
                     }
-                    else if (!buttonB.OuterHtml.Contains("disabled") && lcLeft >= Settings.LC_PER_BARB_ATTACK)
+                    else if (!buttonB.OuterHtml.Contains("disabled") && canSendB)
                     {
                         buttonB.Click();
-                        targetVillage.lastAttackETA = eta;
+                        targetVillage.lastAttackETA = etaB;
                         targetVillage.lastSentAttackTime = DateTime.Now;
                         System.Threading.Thread.Sleep(random.Next(200, 300));
                         Utils.CheckBotProtection(browser.Html);
                     }
-                    else return this;
+                    else continue;
                 }
             }
             System.Console.WriteLine("ENDING FA FARMING");
